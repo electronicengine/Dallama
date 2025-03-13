@@ -10,13 +10,7 @@ Note:
    2. will add system prompt
    3. will add RAG and embeddings
 
-<html>
-<body>
-    <h2>Embedded YouTube Video</h2>
-    <iframe width="560" height="315" src="https://www.youtube.com/shorts/VAiyWTnR7Rw" frameborder="0" allowfullscreen></iframe>
-</body>
-</html>      
+
 
       
 ▶ [Watch on YouTube](https://www.youtube.com/shorts/VAiyWTnR7Rw)
-
