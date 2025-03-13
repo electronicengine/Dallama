@@ -10,6 +10,5 @@ Note:
    2. will add system prompt
    3. will add RAG and embeddings
       
-<a href="https://www.youtube.com/shorts/VAiyWTnR7Rw">
-  <img src="https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg" alt="Watch the video" width="600">
-</a>
+▶ [Watch on YouTube](https://www.youtube.com/shorts/VAiyWTnR7Rw)
+
