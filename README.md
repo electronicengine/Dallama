@@ -11,6 +11,6 @@ Note:
    3. will add RAG and embeddings
 
 
-[![Watch the video]([https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=VIDEO_ID](https://www.youtube.com/shorts/VAiyWTnR7Rw))
+[![Watch the video](https://youtube.com/shorts/VAiyWTnR7Rw?si=YtJLN2DJHdjVD5Af)]
 
 
