@@ -7,8 +7,9 @@ Note:
 4. //toDo
 
    1. will add detailed llama configuration params
-   2. will add system prompt
-   3. will add RAG and embeddings
+   2. will add chat template
+   3. will add system prompt
+   4. will add RAG and embeddings
 
 
 
