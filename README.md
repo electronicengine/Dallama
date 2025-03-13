@@ -9,7 +9,7 @@ Note:
    1. will add detailed llama configuration params
    2. will add system prompt
    3. will add RAG and embeddings
-
-<a href="[https://www.youtube.com/watch?v=VIDEO_ID](https://www.youtube.com/shorts/VAiyWTnR7Rw)">
+      
+<a href="https://www.youtube.com/shorts/VAiyWTnR7Rw">
   <img src="https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg" alt="Watch the video" width="600">
 </a>
