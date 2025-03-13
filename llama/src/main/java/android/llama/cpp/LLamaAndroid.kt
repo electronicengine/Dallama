@@ -47,7 +47,7 @@ class LLamaAndroid {
     private external fun backend_free()
     private external fun new_batch(nTokens: Int, embd: Int, nSeqMax: Int): Long
     private external fun free_batch(batch: Long)
-    private external fun new_sampler(): Long
+    private external fun new_sampler(tempe: Int): Long
     private external fun free_sampler(sampler: Long)
     private external fun bench_model(
         context: Long,
@@ -66,8 +66,9 @@ class LLamaAndroid {
         batch: Long,
         text: String,
         formatChat: Boolean,
-        nLen: Int
-    ): Int
+        nLen: Int,
+        systemPrompt: String
+        ): Int
 
     private external fun completion_loop(
         context: Long,
@@ -92,7 +93,7 @@ class LLamaAndroid {
         }
     }
 
-    suspend fun load(pathToModel: String) {
+    suspend fun load(pathToModel: String, temperature: Int) {
         withContext(runLoop) {
             when (threadLocalState.get()) {
                 is State.Idle -> {
@@ -105,7 +106,7 @@ class LLamaAndroid {
                     val batch = new_batch(512, 0, 1)
                     if (batch == 0L) throw IllegalStateException("new_batch() failed")
 
-                    val sampler = new_sampler()
+                    val sampler = new_sampler(temperature)
                     if (sampler == 0L) throw IllegalStateException("new_sampler() failed")
 
                     Log.i(tag, "Loaded model $pathToModel")
@@ -116,10 +117,10 @@ class LLamaAndroid {
         }
     }
 
-    fun send(message: String, formatChat: Boolean = false, max_token: Int =256): Flow<String> = flow {
+    fun send(message: String, formatChat: Boolean = false, prompt: String,max_token: Int =256): Flow<String> = flow {
         when (val state = threadLocalState.get()) {
             is State.Loaded -> {
-                val ncur = IntVar(completion_init(state.context, state.batch, message, formatChat, max_token))
+                val ncur = IntVar(completion_init(state.context, state.batch, message, formatChat, max_token, prompt))
                 while (ncur.value <= max_token) {
                     val str = completion_loop(state.context, state.batch, state.sampler, max_token, ncur)
                     if (str == null) {

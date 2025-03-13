@@ -312,14 +312,14 @@ Java_android_llama_cpp_LLamaAndroid_free_1batch(JNIEnv *, jobject, jlong batch_p
 
 extern "C"
 JNIEXPORT jlong JNICALL
-Java_android_llama_cpp_LLamaAndroid_new_1sampler(JNIEnv *, jobject) {
+Java_android_llama_cpp_LLamaAndroid_new_1sampler(JNIEnv *, jobject,jint tempe) {
     auto sparams = llama_sampler_chain_default_params();
     sparams.no_perf = true;
     llama_sampler * smpl = llama_sampler_chain_init(sparams);
     llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
 //    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(50));
 //    llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.95, 10));
-//    llama_sampler_chain_add(smpl, llama_sampler_init_temp (0.3f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp (tempe));
     return reinterpret_cast<jlong>(smpl);
 }
 
@@ -350,17 +350,26 @@ Java_android_llama_cpp_LLamaAndroid_completion_1init(
         jlong batch_pointer,
         jstring jtext,
         jboolean format_chat,
-        jint n_len
+        jint n_len,
+        jstring systemPrompt
     ) {
 
     cached_token_chars.clear();
 
     const auto text = env->GetStringUTFChars(jtext, 0);
+    const auto prompt = env->GetStringUTFChars(systemPrompt, 0);
+
     const auto context = reinterpret_cast<llama_context *>(context_pointer);
     const auto batch = reinterpret_cast<llama_batch *>(batch_pointer);
 
-    bool parse_special = (format_chat == JNI_TRUE);
-    const auto tokens_list = common_tokenize(context, text, true, parse_special);
+//    bool parse_special = (format_chat == JNI_TRUE);
+    bool parse_special = true;
+    std::string chat_prompt;
+
+    chat_prompt = "<|system|>\n" + std::string(prompt) + "\n"
+                  "<|user|>\n" + std::string(text) + "\n<|assistant|>\n";
+
+    const auto tokens_list = common_tokenize(context, chat_prompt, true, parse_special);
 
     auto n_ctx = llama_n_ctx(context);
     auto n_kv_req = tokens_list.size() + (n_len - tokens_list.size());

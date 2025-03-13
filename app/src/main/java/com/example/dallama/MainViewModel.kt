@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.catch
@@ -19,7 +20,11 @@ class MainViewModel(private val llamaAndroid: LLamaAndroid = LLamaAndroid.instan
     }
 
     private val tag: String? = this::class.simpleName
-    val maxTokeSize: Int = 256
+    var maxTokeSize by mutableStateOf(TextFieldValue("256"))
+    var prompt by mutableStateOf(TextFieldValue("You are helpful assistant."))
+    var topK by mutableStateOf(TextFieldValue("50"))
+    var topP by mutableStateOf(TextFieldValue("0.9"))
+    var temperature by mutableStateOf(TextFieldValue("0.3"))
 
     var messages by mutableStateOf(listOf<Message>(Message( "Initializing...","System")))
         private set
@@ -45,9 +50,10 @@ class MainViewModel(private val llamaAndroid: LLamaAndroid = LLamaAndroid.instan
         messages = messages + Message( "","Bot")
 
         viewModelScope.launch {
-            llamaAndroid.send(message.content,false, maxTokeSize)
+            llamaAndroid.send(message.content,false, prompt.text, maxTokeSize.text.toInt())
 
                 .catch { exc ->
+                    Log.e(tag, "send() failed", exc)
                     Log.e(tag, "send() failed", exc)
                     messages = messages + Message( exc.message ?: "Unknown error","System")
                 }
@@ -89,7 +95,7 @@ class MainViewModel(private val llamaAndroid: LLamaAndroid = LLamaAndroid.instan
     fun load(pathToModel: String) {
         viewModelScope.launch {
             try {
-                llamaAndroid.load(pathToModel)
+                llamaAndroid.load(pathToModel, temperature.text.toInt())
                 messages = messages + Message("Loaded: $pathToModel","System")
             } catch (exc: IllegalStateException) {
                 Log.e(tag, "load() failed", exc)

@@ -92,11 +92,6 @@ class MainActivity(
     private val downloadManager by lazy { downloadManager ?: getSystemService<DownloadManager>()!! }
     private val viewModel: MainViewModel by viewModels()
     var selectedOption by mutableStateOf("Select a model")
-    var maxTokenSize by  mutableStateOf(TextFieldValue("256"))
-    var topK by  mutableStateOf(TextFieldValue("50"))
-    var topP by  mutableStateOf(TextFieldValue("0.9"))
-    var temperature by  mutableStateOf(TextFieldValue("0.3"))
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -351,8 +346,8 @@ class MainActivity(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 BasicTextField(
-                    value = maxTokenSize,
-                    onValueChange = { maxTokenSize = it },
+                    value = viewModel.maxTokeSize,
+                    onValueChange = { viewModel.maxTokeSize = it },
                     keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
                     textStyle = TextStyle(
                         color = MaterialTheme.colorScheme.primary,
@@ -376,8 +371,8 @@ class MainActivity(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 BasicTextField(
-                    value = temperature,
-                    onValueChange = { temperature = it },
+                    value = viewModel.temperature,
+                    onValueChange = { viewModel.temperature = it },
                     keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
                     textStyle = TextStyle(
                         color = MaterialTheme.colorScheme.primary,
@@ -403,8 +398,8 @@ class MainActivity(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 BasicTextField(
-                    value = topK,
-                    onValueChange = { topK = it },
+                    value = viewModel.topK,
+                    onValueChange = { viewModel.topK = it },
                     keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
                     textStyle = TextStyle(
                         color = MaterialTheme.colorScheme.primary,
@@ -429,8 +424,8 @@ class MainActivity(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 BasicTextField(
-                    value = topP,
-                    onValueChange = { topP = it },
+                    value = viewModel.topP,
+                    onValueChange = { viewModel.topP = it },
                     keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
                     textStyle = TextStyle(
                         color = MaterialTheme.colorScheme.primary,
@@ -450,10 +445,33 @@ class MainActivity(
 
                 )
             }
-
-
-
         }
+
+        Text(
+            text = "System Prompt",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        BasicTextField(
+            value = viewModel.prompt,
+            onValueChange = { viewModel.prompt = it },
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
+            textStyle = TextStyle(
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 20.sp
+            ),
+            modifier = Modifier
+                .background(
+                    MaterialTheme.colorScheme.background,
+                    shape = RoundedCornerShape(10.dp)
+                )
+                .border(
+                    2.dp,
+                    MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(10.dp)
+                )
+                .height(30.dp)
+                .fillMaxSize()
+        )
     }
 
     // Chat screen content
