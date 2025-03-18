@@ -47,7 +47,7 @@ class LLamaAndroid {
     private external fun backend_free()
     private external fun new_batch(nTokens: Int, embd: Int, nSeqMax: Int): Long
     private external fun free_batch(batch: Long)
-    private external fun new_sampler(tempe: Int): Long
+    private external fun new_sampler(tempe: Float): Long
     private external fun free_sampler(sampler: Long)
     private external fun bench_model(
         context: Long,
@@ -93,7 +93,7 @@ class LLamaAndroid {
         }
     }
 
-    suspend fun load(pathToModel: String, temperature: Int) {
+    suspend fun load(pathToModel: String, temperature: Float) {
         withContext(runLoop) {
             when (threadLocalState.get()) {
                 is State.Idle -> {

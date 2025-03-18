@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.dallama.ui.theme.DallamaTheme
 import java.io.File
+import android.Manifest
 
 import android.app.ActivityManager
 import android.app.DownloadManager
@@ -47,10 +48,15 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Context.INPUT_METHOD_SERVICE
+import android.os.Build
+//import android.speech.tts.TextToSpeech
+import android.util.Log
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -75,6 +81,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.ContextCompat.getSystemService
 import androidx.core.content.getSystemService
@@ -82,6 +89,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 
 
 data class Message(val content: String, val sender: String)
+// lateinit var tts: TextToSpeech
 
 class MainActivity(
     activityManager: ActivityManager? = null,
@@ -92,11 +100,20 @@ class MainActivity(
     private val downloadManager by lazy { downloadManager ?: getSystemService<DownloadManager>()!! }
     private val viewModel: MainViewModel by viewModels()
     var selectedOption by mutableStateOf("Select a model")
+    //private lateinit var tts: TextToSpeech  // Global TTS instance
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
+/*
+        tts = TextToSpeech(applicationContext) { status ->
+            if (status != TextToSpeech.ERROR) {
+                tts.language = Locale("tr", "TR")  // Turkish locale
+                tts.speak("Merhaba. Nasılsın?", TextToSpeech.QUEUE_FLUSH, null, null)
+            }
+        }
+        Toast.makeText(applicationContext, "onCreate", Toast.LENGTH_SHORT).show()
+*/
         setContent {
             DallamaTheme {
                 var drawerState by remember { mutableStateOf(DrawerValue.Closed) }
@@ -255,6 +272,16 @@ class MainActivity(
     fun ModelControlButtons() {
         var isModelLoaded by remember { mutableStateOf(false) }
         val context = LocalContext.current
+        val REQUEST_CODE = 1001  // İzin isteği için sabit kod
+        val requestPermissionLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions ->
+            if (permissions.values.all { it }) {
+                Toast.makeText(context, "Tüm izinler verildi", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "İzinler reddedildi", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         Row(
             modifier = Modifier
@@ -262,17 +289,23 @@ class MainActivity(
                 .padding(top = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+
             Button(
                 onClick = {
-                    selectedOption?.let {
-                    // Simulate model loading logic
-                    isModelLoaded = true // Set model as loaded when button is clicked
-                    val extFilesDir = getExternalFilesDir(null)
-                    val file = File(extFilesDir, it)
-                    viewModel.load(file.absolutePath)
-                    // Show toast message
-                    Toast.makeText(context, "Selected: ${file.absolutePath}", Toast.LENGTH_SHORT).show()
-                }
+                    try {
+
+                        selectedOption?.let {
+                            isModelLoaded = true // Set model as loaded when button is clicked
+                            val extFilesDir = getExternalFilesDir(null)
+                            val file = File(extFilesDir, it)
+                            //Toast.makeText(context, "Selected: ${file.absolutePath}", Toast.LENGTH_SHORT).show()
+                            Log.e("ViewModel", "Model yüklenirken hata oluştu:")
+
+                            viewModel.load(file.absolutePath)
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "${e.message}", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
                 modifier = Modifier.weight(1f)
@@ -292,7 +325,12 @@ class MainActivity(
 
             Button(
                 onClick = {
+/*
+                    val extFilesDir = getExternalFilesDir(null)
+                    val file = File(extFilesDir, selectedOption)
+                    file.delete()
                     Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
+*/
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
                 modifier = Modifier.weight(1f)
