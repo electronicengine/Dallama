@@ -105,9 +105,10 @@ Java_android_llama_cpp_LLamaAndroid_free_1model(JNIEnv *, jobject, jlong model) 
     llama_model_free(reinterpret_cast<llama_model *>(model));
 }
 
+
 extern "C"
 JNIEXPORT jlong JNICALL
-Java_android_llama_cpp_LLamaAndroid_new_1context(JNIEnv *env, jobject, jlong jmodel) {
+Java_android_llama_cpp_LLamaAndroid_new_1context(JNIEnv *env, jobject, jlong jmodel, jboolean embedding) {
     auto model = reinterpret_cast<llama_model *>(jmodel);
 
     if (!model) {
@@ -124,6 +125,12 @@ Java_android_llama_cpp_LLamaAndroid_new_1context(JNIEnv *env, jobject, jlong jmo
     ctx_params.n_ctx           = 2048;
     ctx_params.n_threads       = n_threads;
     ctx_params.n_threads_batch = n_threads;
+    ctx_params.embeddings = embedding;
+
+    if(embedding){
+        ctx_params.pooling_type = llama_pooling_type::LLAMA_POOLING_TYPE_MEAN;
+        ctx_params.n_batch = ctx_params.n_ctx;
+    }
 
     llama_context * context = llama_new_context_with_model(model, ctx_params);
 
@@ -189,7 +196,7 @@ Java_android_llama_cpp_LLamaAndroid_bench_1model(
         common_batch_clear(*batch);
 
         const int n_tokens = pp;
-        for (i = 0; i < n_tokens; i++) {
+        for (uint32_t i = 0; i < n_tokens; i++) {
             common_batch_add(*batch, 0, i, { 0 }, false);
         }
 
@@ -300,6 +307,140 @@ Java_android_llama_cpp_LLamaAndroid_new_1batch(JNIEnv *, jobject, jint n_tokens,
     batch->logits   = (int8_t *)        malloc(sizeof(int8_t)         * n_tokens);
 
     return reinterpret_cast<jlong>(batch);
+}
+
+
+
+void batch_add_seq(llama_batch & batch, const std::vector<int32_t> & tokens, llama_seq_id seq_id)
+{
+    size_t n_tokens = tokens.size();
+    for (size_t i = 0; i < n_tokens; i++) {
+        common_batch_add(batch, tokens[i], i, { seq_id }, true);
+    }
+}
+
+
+void batch_decode(llama_context * ctx, llama_batch & batch, float * output, int n_seq, int n_embd, int embd_norm) {
+    const struct llama_model * model = llama_get_model(ctx);
+    // clear previous kv_cache values (irrelevant for embeddings)
+    const enum llama_pooling_type pooling_type = llama_pooling_type(ctx);
+
+    // clear previous kv_cache values (irrelevant for embeddings)
+    llama_kv_cache_clear(ctx);
+
+    // run model
+    if (llama_model_has_encoder(model) && !llama_model_has_decoder(model)) {
+        // encoder-only model
+        if (llama_encode(ctx, batch) < 0) {
+            //std::cout << "error" << std::endl;
+
+        }
+    } else if (!llama_model_has_encoder(model) && llama_model_has_decoder(model)) {
+        // decoder-only model
+        int32_t ret = llama_decode(ctx, batch);
+
+        if (ret < 0) {
+            //std::cout << "error" << std::endl;
+        }
+    }
+
+    for (int i = 0; i < batch.n_tokens; i++) {
+        if (!batch.logits[i]) {
+            continue;
+        }
+
+        const float * embd = nullptr;
+        int embd_pos = 0;
+
+        if (pooling_type == LLAMA_POOLING_TYPE_NONE) {
+            // try to get token embeddings
+            embd = llama_get_embeddings_ith(ctx, i);
+            embd_pos = i;
+            GGML_ASSERT(embd != NULL && "failed to get token embeddings");
+        } else {
+            // try to get sequence embeddings - supported only when pooling_type is not NONE
+            auto seq_id = batch.seq_id[i][0];
+
+            embd = llama_get_embeddings_seq(ctx, seq_id);
+            embd_pos = batch.seq_id[i][0];
+            GGML_ASSERT(embd != NULL && "failed to get sequence embeddings");
+        }
+
+        float * out = output + embd_pos * n_embd;
+        common_embd_normalize(embd, out, n_embd, embd_norm);
+    }
+}
+
+extern "C"
+JNIEXPORT jfloatArray JNICALL
+Java_android_llama_cpp_LLamaAndroid_calculate_1embeddings(JNIEnv *env, jobject, jlong model_pointer, jlong context_pointer, jstring text_) {
+    // Convert the Java string to a C++ string
+    const char *text_cstr = env->GetStringUTFChars(text_, nullptr);
+    std::string text(text_cstr);
+    env->ReleaseStringUTFChars(text_, text_cstr);
+
+    // Cast the model and context pointers
+    const llama_model *model = reinterpret_cast<const llama_model *>(model_pointer);
+    llama_context *ctx = reinterpret_cast<llama_context *>(context_pointer);
+
+    // Call the original function
+    const llama_vocab *vocab = llama_model_get_vocab(model);
+
+    const int n_ctx_train = llama_model_n_ctx_train(model);
+    const int n_ctx = llama_n_ctx(ctx);
+
+    uint64_t batch_size = 2048;
+
+    auto tokens = common_tokenize(ctx, text, true, true);
+
+    // Initialize batch
+    llama_batch batch = llama_batch_init(batch_size, 0, 1);
+
+    // Prepare output embeddings
+    const int embedding_dim = llama_model_n_embd(model);
+    std::vector<float> embeddings(embedding_dim, 0);
+
+    // Process tokens in batch
+    batch_add_seq(batch, tokens, 0);  // Add all tokens at once (simplified)
+
+    // Decode and get embeddings
+    batch_decode(ctx, batch, embeddings.data(), 1, embedding_dim, 2);
+
+    // Cleanup
+    llama_batch_free(batch);
+
+    // Convert the result to a jfloatArray
+    jfloatArray result = env->NewFloatArray(embeddings.size());
+    if (result != nullptr) {
+        env->SetFloatArrayRegion(result, 0, embeddings.size(), embeddings.data());
+    }
+
+    return result;
+}
+
+extern "C"
+JNIEXPORT jfloat JNICALL
+Java_android_llama_cpp_LLamaAndroid_get_1similarity(JNIEnv *env, jobject, jfloatArray emb1, jfloatArray emb2) {
+    // Get the size of the arrays
+    jsize size1 = env->GetArrayLength(emb1);
+    jsize size2 = env->GetArrayLength(emb2);
+
+    // Ensure both arrays are of the same size
+    if (size1 != size2) {
+        env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"), "Embeddings must have the same size");
+        return -1.0f;
+    }
+
+    // Convert Java arrays to C++ vectors
+    std::vector<float> Emb1(size1);
+    std::vector<float> Emb2(size2);
+    env->GetFloatArrayRegion(emb1, 0, size1, Emb1.data());
+    env->GetFloatArrayRegion(emb2, 0, size2, Emb2.data());
+
+    // Call the original function
+    float similarity = common_embd_similarity_cos(Emb1.data(), Emb2.data(), size1);
+
+    return similarity;
 }
 
 extern "C"

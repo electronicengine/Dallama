@@ -14,6 +14,8 @@ class LLamaAndroid {
     private val tag: String? = this::class.simpleName
 
     private val threadLocalState: ThreadLocal<State> = ThreadLocal.withInitial { State.Idle }
+    private var _model : Long = 0L
+    private var _context : Long = 0L
 
     private val runLoop: CoroutineDispatcher = Executors.newSingleThreadExecutor {
         thread(start = false, name = "Llm-RunLoop") {
@@ -41,7 +43,7 @@ class LLamaAndroid {
     private external fun log_to_android()
     private external fun load_model(filename: String): Long
     private external fun free_model(model: Long)
-    private external fun new_context(model: Long): Long
+    private external fun new_context(model: Long, embedding: Boolean): Long
     private external fun free_context(context: Long)
     private external fun backend_init(numa: Boolean)
     private external fun backend_free()
@@ -49,6 +51,8 @@ class LLamaAndroid {
     private external fun free_batch(batch: Long)
     private external fun new_sampler(tempe: Float): Long
     private external fun free_sampler(sampler: Long)
+    private external fun get_similarity(emb1: FloatArray, emb2: FloatArray ): Float
+    private external fun calculate_embeddings(model_pointer: Long, context_pointer: Long, text_: String): FloatArray
     private external fun bench_model(
         context: Long,
         model: Long,
@@ -93,15 +97,31 @@ class LLamaAndroid {
         }
     }
 
-    suspend fun load(pathToModel: String, temperature: Float) {
+    suspend fun get_embedding(text: String){
+        return withContext(runLoop) {
+            when (val state = threadLocalState.get()) {
+                is State.Loaded -> {
+                    Log.d(tag, "get_embedding(): $state")
+                    calculate_embeddings(state.model, state.context, text)
+                }
+
+                else -> throw IllegalStateException("No model loaded")
+            }
+        }
+    }
+
+
+    suspend fun load(pathToModel: String, temperature: Float, embedding: Boolean) {
         withContext(runLoop) {
             when (threadLocalState.get()) {
                 is State.Idle -> {
                     val model = load_model(pathToModel)
                     if (model == 0L)  throw IllegalStateException("load_model() failed")
+                    _model = model
 
-                    val context = new_context(model)
+                    val context = new_context(model, embedding)
                     if (context == 0L) throw IllegalStateException("new_context() failed")
+                    _context = context
 
                     val batch = new_batch(512, 0, 1)
                     if (batch == 0L) throw IllegalStateException("new_batch() failed")

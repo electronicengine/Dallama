@@ -4,7 +4,6 @@ import android.llama.cpp.LLamaAndroid
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.ViewModel
@@ -13,7 +12,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 
-class MainViewModel(private val llamaAndroid: LLamaAndroid = LLamaAndroid.instance()): ViewModel() {
+class LlamaModel(private val llamaAndroid: LLamaAndroid = LLamaAndroid.instance()): ViewModel() {
     companion object {
         @JvmStatic
         private val NanosPerSecond = 1_000_000_000.0
@@ -92,10 +91,10 @@ class MainViewModel(private val llamaAndroid: LLamaAndroid = LLamaAndroid.instan
         }
     }
 
-    fun load(pathToModel: String) {
+    fun load(pathToModel: String, embedding : Boolean = false) {
         viewModelScope.launch {
             try {
-                llamaAndroid.load(pathToModel, temperature.text.toFloat())
+                llamaAndroid.load(pathToModel, temperature.text.toFloat(), embedding)
                 messages = messages + Message("Loaded: $pathToModel","System")
             } catch (exc: IllegalStateException) {
                 Log.e(tag, "load() failed", exc)

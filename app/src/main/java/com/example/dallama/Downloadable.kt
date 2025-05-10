@@ -34,7 +34,7 @@ data class Downloadable(val name: String, val source: Uri, val destination: File
 
         @JvmStatic
         @Composable
-        fun Button(viewModel: MainViewModel, dm: DownloadManager, item: Downloadable, modifier: Modifier = Modifier // Add a modifier parameter with a default value
+        fun Button(dm: DownloadManager, item: Downloadable, modifier: Modifier = Modifier // Add a modifier parameter with a default value
         ) {
             var status: State by remember {
                 mutableStateOf(
@@ -80,7 +80,6 @@ data class Downloadable(val name: String, val source: Uri, val destination: File
             fun onClick() {
                 when (val s = status) {
                     is Downloaded -> {
-                        //viewModel.load(item.destination.path)
                         status = Ready
                     }
 
@@ -99,9 +98,6 @@ data class Downloadable(val name: String, val source: Uri, val destination: File
                             setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI)
                             setDestinationUri(item.destination.toUri())
                         }
-
-                        viewModel.log("Saving ${item.name} to ${item.destination.path}")
-                        Log.i(tag, "Saving ${item.name} to ${item.destination.path}")
 
                         val id = dm.enqueue(request)
                         status = Downloading(id)
