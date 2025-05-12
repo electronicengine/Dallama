@@ -46,6 +46,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -56,6 +58,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -70,8 +73,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.launch
 
 
 data class Message(val content: String, val sender: String)
@@ -94,6 +100,7 @@ class MainActivity(
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        PDFBoxResourceLoader.init(getApplicationContext());
 
         setContent {
             DallamaTheme {
@@ -586,6 +593,7 @@ fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel) {
     var messageText by remember { mutableStateOf(TextFieldValue("")) }
     val context = LocalContext.current
     val imm = ContextCompat.getSystemService(context, InputMethodManager::class.java)
+    val focusManager = LocalFocusManager.current
 
 
     Column(
@@ -593,9 +601,10 @@ fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel) {
             .fillMaxSize()
             .padding(16.dp)
             .pointerInput(Unit) {
+
                 detectTapGestures(
                     onTap = {
-                        // Hide the keyboard when touching outside
+                        focusManager.clearFocus()
                         imm?.hideSoftInputFromWindow((context as Activity).currentFocus?.windowToken, 0)
                     }
                 )
@@ -614,24 +623,71 @@ fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel) {
                 MessageCard(message = message)
             }
         }
+        val context = LocalContext.current
+        val parser = remember { PdfTextParser(context) }
 
-        Button(
-            onClick = {
-                // Your click logic
-            },
-            modifier = Modifier
-                .padding(start = 200.dp, end = 8.dp)
-                .size(50.dp), // Set both width and height
-            contentPadding = PaddingValues(0.dp), // So the icon fills the button
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary // Ensure contrast
+        var isLoading by remember { mutableStateOf(false) }
+
+        val scope = rememberCoroutineScope()
+        var statusText by remember { mutableStateOf("") }
+
+        val launcher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument(),
+            onResult = { uri ->
+                uri?.let {
+                    scope.launch {
+                        isLoading = true
+                        statusText = "Parsing PDF..."
+                        try {
+                            val text = parser.parseTextFromPdf(it)
+                            text.forEachIndexed { index, part ->
+                                chatModel.updateMessage("hello", "You")
+                            }
+
+                            // Get file name from URI
+                            val fileName = parser.getFileNameFromUri(it)
+                            statusText = fileName ?: "PDF parsed."
+                        } catch (e: Exception) {
+                            Log.e("PDF", "Parse error: ${e.message}")
+                            statusText = "Parse failed."
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                }
+            }
+        )
+
+        val interactionSource = remember { MutableInteractionSource() }
+        val isTextFieldFocused by interactionSource.collectIsFocusedAsState()
+
+        if (isTextFieldFocused) {
+            Text(
+                text = statusText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground
             )
-        ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = "Add Pdf",
-                tint = Color.White // Make sure it's visible over primary background
-            )
+            Button(
+                onClick = {
+                    launcher.launch(arrayOf("application/pdf"))
+                },
+                modifier = Modifier
+                    .padding(start = 200.dp, end = 8.dp)
+                    .size(50.dp), // Set both width and height
+                contentPadding = PaddingValues(0.dp), // So the icon fills the button
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary // Ensure contrast
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add Pdf",
+                    tint = Color.White // Make sure it's visible over primary background
+                )
+            }
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+            }
         }
 
         Row(
@@ -644,8 +700,8 @@ fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel) {
                 value = messageText,
                 onValueChange = { messageText = it },
                 label = { Text("Message") },
-                modifier = Modifier
-                   .fillMaxWidth(0.7f)
+                modifier = Modifier.fillMaxWidth(0.7f),
+                interactionSource = interactionSource
             )
 
             Button(
