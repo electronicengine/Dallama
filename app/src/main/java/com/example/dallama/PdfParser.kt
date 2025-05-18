@@ -10,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.InputStream
 
+private const val MAX_CHUNK_SIZE = 64
+
 class PdfTextParser(private val context: Context) {
 
     init {
@@ -39,7 +41,7 @@ class PdfTextParser(private val context: Context) {
                 val text = stripper.getText(document)
                 document.close()
 
-                val parts = splitTextSmartBySentence(text, 1024)
+                val parts = splitTextSmartBySentence(text, MAX_CHUNK_SIZE)
                 return@withContext parts
             } else {
                 throw IllegalArgumentException("PDF açma başarısız.")
@@ -48,7 +50,7 @@ class PdfTextParser(private val context: Context) {
     }
 
     private fun splitTextSmartBySentence(text: String, maxChunkSize: Int): List<String> {
-        val sentences = Regex("(?<=[.!?])\\s+").split(text)  // Cümlelere ayır
+        val sentences = Regex("(?<=[.!?\\n])\\s+").split(text)  // Cümlelere ayır
         val result = mutableListOf<String>()
         val currentChunk = StringBuilder()
 

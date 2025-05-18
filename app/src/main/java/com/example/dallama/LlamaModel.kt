@@ -25,7 +25,7 @@ class LlamaModel(val name: String = "Chat Model") {
     private var loaded: Boolean = false
     private val tag: String? = this::class.simpleName
     var maxTokeSize by mutableStateOf(TextFieldValue("256"))
-    var prompt by mutableStateOf(TextFieldValue("You are helpful assistant."))
+    var systemMessage by mutableStateOf(TextFieldValue("You are helpful assistant."))
     var topK by mutableStateOf(TextFieldValue("50"))
     var topP by mutableStateOf(TextFieldValue("0.9"))
     var temperature by mutableStateOf(TextFieldValue("0.3"))
@@ -53,7 +53,7 @@ class LlamaModel(val name: String = "Chat Model") {
         messages = messages + message.copy()
         messages = messages + Message("", "$name Bot", System.currentTimeMillis())
         scope.launch {
-            llamaAndroid.send(message.content, false, prompt.text, maxTokeSize.text.toInt())
+            llamaAndroid.send(message.content, false, systemMessage.text, maxTokeSize.text.toInt())
                 .catch { exc ->
                     Log.e(tag, "send() failed", exc)
                     messages = messages + Message(exc.message ?: "Unknown error", "$name System", System.currentTimeMillis())
@@ -62,6 +62,10 @@ class LlamaModel(val name: String = "Chat Model") {
                     messages = messages.dropLast(1) + messages.last().copy(content = messages.last().content + response)
                 }
         }
+    }
+
+    fun updateSystemMessage(newSystemMessage: String) {
+        systemMessage = TextFieldValue(newSystemMessage)
     }
 
     fun bench(pp: Int, tg: Int, pl: Int, nr: Int = 1) {
@@ -120,16 +124,23 @@ class LlamaModel(val name: String = "Chat Model") {
     }
 
     suspend fun calculateEmbedding(text: String): FloatArray {
-        scope.launch {
-            try {
-                llamaAndroid.get_embedding(text)
-                loaded = true
-            } catch (exc: IllegalStateException) {
-                Log.e(tag, "load() failed", exc)
-                messages = messages + Message(exc.message ?: "Unknown error", "$name System", System.currentTimeMillis())
-            }
+        try {
+            return llamaAndroid.get_embedding(text)
+        } catch (exc: IllegalStateException) {
+            Log.e(tag, "load() failed", exc)
+            messages = messages + Message(exc.message ?: "Unknown error", "$name System", System.currentTimeMillis())
+            return FloatArray(0)
         }
-        return FloatArray(0)
+    }
+
+    suspend fun calculateSimilarity(embd1: FloatArray, embd2: FloatArray): Float {
+        try {
+            return llamaAndroid.calculate_similarity(embd1, embd2)
+        } catch (exc: IllegalStateException) {
+            Log.e(tag, "load() failed", exc)
+            messages = messages + Message(exc.message ?: "Unknown error", "$name System", System.currentTimeMillis())
+            return 2.0f
+        }
     }
 }
 

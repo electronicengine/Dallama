@@ -53,6 +53,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -78,6 +79,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 
 data class Message(val content: String, val sender: String, val timestamp: Long)
@@ -91,6 +93,7 @@ class MainActivity(
     private val downloadManager by lazy { downloadManager ?: getSystemService<DownloadManager>()!! }
     private val chatModel: LlamaModel = LlamaModel("Chat Model")
     private val embeddingModel: LlamaModel = LlamaModel("Embedding Model")
+    val pdfTextMap = mutableStateMapOf<String, Pair<List<String>, List<FloatArray>>>()
 
     var selectedChatModel by mutableStateOf("Select Chat")
     var selectedEmbeddingModel by mutableStateOf("Select Embed")
@@ -352,6 +355,7 @@ class MainActivity(
                                 chatModel.load(file.absolutePath, false)
                             }
                         } catch (e: Exception) {
+                            chatModel.addToMessages("An error accured: ${e.message}", "System")
                             isChatLoaded = false
                             Toast.makeText(context, "${e.message}", Toast.LENGTH_SHORT).show()
                         }
@@ -369,8 +373,10 @@ class MainActivity(
                                     "embeddingModel yüklenirken hata oluştu:"
                                 )
                                 embeddingModel.load(file.absolutePath, true)
+
                             }
                         } catch (e: Exception) {
+                            embeddingModel.addToMessages("An error accured: ${e.message}", "System")
                             isEmbeddingModelLoaded = false
                             Toast.makeText(context, "${e.message}", Toast.LENGTH_SHORT).show()
                         }
@@ -580,8 +586,8 @@ class MainActivity(
             style = MaterialTheme.typography.bodyMedium,
         )
         BasicTextField(
-            value = chatModel.prompt,
-            onValueChange = { chatModel.prompt = it },
+            value = chatModel.systemMessage,
+            onValueChange = { chatModel.systemMessage = it },
             keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
             textStyle = TextStyle(
                 color = MaterialTheme.colorScheme.primary,
@@ -613,7 +619,8 @@ class MainActivity(
                     .padding(end = 0.dp)
                     .fillMaxSize(),
                 chatModel,
-                embeddingModel
+                embeddingModel,
+                pdfTextMap
             )
         }
     }
@@ -622,19 +629,61 @@ class MainActivity(
 }
 
 @Composable
-fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel, embeddingModel: LlamaModel) {
+fun ChatScreen(
+    modifier: Modifier = Modifier,
+    chatModel: LlamaModel,
+    embeddingModel: LlamaModel,
+    pdfTextMap: MutableMap<String, Pair<List<String>, List<FloatArray>>>,
+) {
     var messageText by remember { mutableStateOf(TextFieldValue("")) }
     val context = LocalContext.current
     val imm = ContextCompat.getSystemService(context, InputMethodManager::class.java)
     val focusManager = LocalFocusManager.current
 
+    val listState = rememberLazyListState()
+    val parser = remember { PdfTextParser(context) }
+    var isLoading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var statusText by remember { mutableStateOf("") }
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri ->
+            uri?.let {
+                scope.launch {
+                    isLoading = true
+                    statusText = "Parsing PDF..."
+                    try {
+                        val text = parser.parseTextFromPdf(it)
+                        val fileName = parser.getFileNameFromUri(it) ?: "Unknown.pdf"
+                        var embeddings: List<FloatArray> = emptyList()
+                        if (embeddingModel.isLoaded()) {
+                            statusText = "Calculating embeddings..."
+                            embeddings = text.map { part ->
+                                embeddingModel.calculateEmbedding(part)
+                            }
+                            pdfTextMap[fileName] = Pair(text, embeddings)
+                        } else {
+                            embeddingModel.addToMessages("Embedding model is not loaded! Select a embedding model", "System")
+                        }
+                        statusText = pdfTextMap.keys.joinToString(separator = "\n") { name -> if (name.length > 24) name.take(24) + "..." else name }
+                    } catch (e: Exception) {
+                        Log.e("PDF", "Parse error: ${e.message}")
+                        statusText = "Parse failed."
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            }
+        }
+    )
+    val interactionSource = remember { MutableInteractionSource() }
+    val isTextFieldFocused by interactionSource.collectIsFocusedAsState()
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp)
             .pointerInput(Unit) {
-
                 detectTapGestures(
                     onTap = {
                         focusManager.clearFocus()
@@ -643,129 +692,178 @@ fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel, embeddingMo
                 )
             }
     ) {
-        val listState = rememberLazyListState()
-
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-        ) {
-
-            items((chatModel.messages + embeddingModel.messages).sortedBy { it.timestamp }) { message ->
-                MessageCard(message = message)
-            }
+        Column(Modifier.weight(1f)) {
+            ChatMessageList(
+                chatModel = chatModel,
+                embeddingModel = embeddingModel,
+                listState = listState
+            )
         }
-        val context = LocalContext.current
-        val parser = remember { PdfTextParser(context) }
 
-        var isLoading by remember { mutableStateOf(false) }
-
-        val scope = rememberCoroutineScope()
-        var statusText by remember { mutableStateOf("") }
-        val pdfTextMap = remember { mutableStateMapOf<String, Pair<List<String>, List<FloatArray>>>() }
-
-        val launcher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.OpenDocument(),
-            onResult = { uri ->
-                uri?.let {
-                    scope.launch {
-                        isLoading = true
-                        statusText = "Parsing PDF..."
-                        try {
-                            val text = parser.parseTextFromPdf(it)
-                            val fileName = parser.getFileNameFromUri(it) ?: "Unknown.pdf"
-                            var embeddings: List<FloatArray> = emptyList()
-                            if (embeddingModel.isLoaded()) {
-                                statusText = "Calculating embeddings..."
-                                embeddings = text.map { part ->
-                                    embeddingModel.calculateEmbedding(part)
-                                }
-                            } else {
-                                chatModel.addToMessages("Embedding model is not loaded!", "System")
-                            }
-
-                            pdfTextMap[fileName] = Pair(text, embeddings)
-                            chatModel.addToMessages("File: $fileName is parsed successfully", "System")
-                            statusText = pdfTextMap.keys.joinToString(separator = "\n")
-                        } catch (e: Exception) {
-                            Log.e("PDF", "Parse error: ${e.message}")
-                            statusText = "Parse failed."
-                        } finally {
-                            isLoading = false
-                        }
-                    }
-                }
-            }
+        PdfStatusAndButton(
+            isTextFieldFocused = isTextFieldFocused,
+            statusText = statusText,
+            isLoading = isLoading,
+            onPdfButtonClick = { launcher.launch(arrayOf("application/pdf")) }
         )
 
-        val interactionSource = remember { MutableInteractionSource() }
-        val isTextFieldFocused by interactionSource.collectIsFocusedAsState()
+        ChatInputRow(
+            messageText = messageText,
+            onMessageChange = { messageText = it },
+            onSendClick = {
+                handleSendMessage(messageText, chatModel, embeddingModel, pdfTextMap) { messageText = it }
+            },
+            interactionSource = interactionSource,
+            isLoading
+        )
 
-        if (isTextFieldFocused) {
-            Text(
-                text = statusText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+        LaunchedEffect(chatModel.messages) {
+            listState.animateScrollToItem(chatModel.messages.size - 1)
+        }
+    }
+}
+
+private fun handleSendMessage(
+    messageText: TextFieldValue,
+    chatModel: LlamaModel,
+    embeddingModel: LlamaModel,
+    pdfTextMap: MutableMap<String, Pair<List<String>, List<FloatArray>>>,
+    onMessageCleared: (TextFieldValue) -> Unit
+) {
+    if (messageText.text.isNotBlank()) {
+        if(pdfTextMap.isNotEmpty()){
+            if(embeddingModel.isLoaded()){
+                val embText = runBlocking {
+                    embeddingModel.calculateEmbedding(messageText.text)
+                }
+                val top2 = runBlocking {
+                    pdfTextMap.values.flatMap { (texts, embeddings) ->
+                        embeddings.mapIndexed { idx, emb ->
+                            val sim = embeddingModel.calculateSimilarity(embText, emb)
+                            Pair(sim, texts[idx])
+                        }
+                    }.sortedByDescending { it.first }.take(1)
+                }
+
+                val top2Text = top2.joinToString(separator = "\n") { " ${it.second}" }
+//                top2.forEach { pair ->
+//                    embeddingModel.addToMessages("Relevant Document Info: ${pair.second}", "System")
+//                }
+                //chatModel.updateSystemMessage("Give answer according to this additional Document Info: $top2Text")
+                chatModel.updateMessage(messageText.text + "Relevant Info: $top2Text", "You")
+                onMessageCleared(TextFieldValue(""))
+                chatModel.send()
+
+                //embeddingModel.addToMessages("Parts: \n$top3Text", "System")
+
+            }else{
+                embeddingModel.addToMessages("Embedding model is not loaded! Select a embedding model", "System")
+            }
+        }else{
+            if(chatModel.isLoaded()){
+                chatModel.updateMessage(messageText.text, "You")
+                onMessageCleared(TextFieldValue(""))
+                chatModel.send()
+            }else{
+                chatModel.addToMessages("Chat model is not loaded! Select a chat model", "System")
+            }
+
+        }
+    }
+}
+
+@Composable
+private fun ChatMessageList(
+    chatModel: LlamaModel,
+    embeddingModel: LlamaModel,
+    listState: LazyListState
+) {
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxWidth(),
+    ) {
+        items((chatModel.messages + embeddingModel.messages).sortedBy { it.timestamp }) { message ->
+            MessageCard(message = message)
+        }
+    }
+}
+
+@Composable
+private fun PdfStatusAndButton(
+    isTextFieldFocused: Boolean,
+    statusText: String,
+    isLoading: Boolean,
+    onPdfButtonClick: () -> Unit
+) {
+
+    if (isTextFieldFocused) {
+        Row {
+            Column {
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                if (isLoading) {
+                    CircularProgressIndicator()
+                }
+            }
+
             Button(
-                onClick = {
-                    launcher.launch(arrayOf("application/pdf"))
-                },
+                onClick = onPdfButtonClick,
                 modifier = Modifier
-                    .padding(start = 200.dp, end = 8.dp)
-                    .size(50.dp), // Set both width and height
-                contentPadding = PaddingValues(0.dp), // So the icon fills the button
+                    .size(50.dp),
+                contentPadding = PaddingValues(0.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary // Ensure contrast
+                    containerColor = MaterialTheme.colorScheme.primary
                 )
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = "Add Pdf",
-                    tint = Color.White // Make sure it's visible over primary background
+                    tint = Color.White
                 )
             }
-            if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.padding(16.dp))
-            }
+
         }
 
-        Row(
-            modifier = Modifier
-                .padding(top = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+    }
+}
+
+
+@Composable
+private fun ChatInputRow(
+    messageText: TextFieldValue,
+    onMessageChange: (TextFieldValue) -> Unit,
+    onSendClick: () -> Unit,
+    interactionSource: MutableInteractionSource,
+    isLoading: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .padding(top = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedTextField(
+            value = messageText,
+            onValueChange = onMessageChange,
+            label = { Text("Message") },
+            modifier = Modifier.fillMaxWidth(0.8f),
+            interactionSource = interactionSource
+        )
+
+        Button(
+            onClick = onSendClick,
+            enabled = !isLoading,
+            modifier = Modifier.padding(end = 0.dp).width(90.dp)
         ) {
-            OutlinedTextField(
-                value = messageText,
-                onValueChange = { messageText = it },
-                label = { Text("Message") },
-                modifier = Modifier.fillMaxWidth(0.8f),
-                interactionSource = interactionSource
+            Icon(
+                imageVector = Icons.Default.Send,
+                contentDescription = "Send Message",
+                tint = Color.White
             )
-
-            Button(
-                onClick = {
-                    if (messageText.text.isNotBlank()) {
-                        chatModel.updateMessage(messageText.text, "You")
-                        messageText = TextFieldValue("")
-                        chatModel.send()
-                    }
-
-                },
-                modifier = Modifier.padding(end = 0.dp).width(90.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Send,
-                    contentDescription = "Send Message",
-                    tint = Color.White // or your theme color
-                )
-            }
-
-        }
-        LaunchedEffect(chatModel.messages) {
-            listState.animateScrollToItem(chatModel.messages.size - 1)
         }
     }
 }
@@ -782,6 +880,18 @@ fun MessageCard(message: Message) {
         isBot -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.surface
     }
+
+    // Animation for writing indicator
+    val dotCount = remember { mutableStateOf(1) }
+    if (message.content.isEmpty()) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                dotCount.value = (dotCount.value % 3) + 1
+                kotlinx.coroutines.delay(500)
+            }
+        }
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
@@ -790,7 +900,7 @@ fun MessageCard(message: Message) {
             modifier = Modifier
                 .padding(4.dp),
             colors = CardDefaults.cardColors(
-                containerColor = bcolor// Set background color
+                containerColor = bcolor // Set background color
             )
         ) {
             Column(modifier = Modifier.padding(8.dp)) {
@@ -800,7 +910,12 @@ fun MessageCard(message: Message) {
                     style = TextStyle(fontWeight = FontWeight.Bold),
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
-                Text(text = message.content)
+                if (message.content.isEmpty()) {
+                    val dots = ".".repeat(dotCount.value)
+                    Text(text = "thinking$dots")
+                } else {
+                    Text(text = message.content)
+                }
             }
         }
     }
@@ -813,6 +928,6 @@ fun DefaultPreview() {
     val mockEmbeddingModel = remember { LlamaModel() } // Create ViewModel instance manually
 
     DallamaTheme {
-        ChatScreen(chatModel = mockChatModel, embeddingModel = mockEmbeddingModel) // Pass the ViewModel to ChatScreen
+        ChatScreen(chatModel = mockChatModel, embeddingModel = mockEmbeddingModel, pdfTextMap = remember { mutableStateMapOf() }) // Pass the ViewModel to ChatScreen
     }
 }

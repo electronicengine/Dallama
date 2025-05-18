@@ -98,8 +98,23 @@ class LLamaAndroid {
             when (state) {
                 is State.Loaded -> {
                     Log.d(tag, "get_embedding(): $state")
-                    val calculateEmbeddings = calculate_embeddings(state.model, state.context, text)
-                    calculateEmbeddings
+                    val embArr =  calculate_embeddings(state.model, state.context, text)
+                    return@withContext embArr
+                }
+
+                else -> throw IllegalStateException("No model loaded")
+            }
+        }
+    }
+
+    suspend fun calculate_similarity(emb1: FloatArray, emb2: FloatArray ): Float {
+        return withContext(runLoop) {
+            val state = threadLocalState.get()
+            when (state) {
+                is State.Loaded -> {
+                    Log.d(tag, "get_similarity(): $state")
+                    val embArr =  get_similarity(emb1, emb2)
+                    return@withContext embArr
                 }
 
                 else -> throw IllegalStateException("No model loaded")
