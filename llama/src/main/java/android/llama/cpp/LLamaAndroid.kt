@@ -19,16 +19,13 @@ class LLamaAndroid {
 
     private val runLoop: CoroutineDispatcher = Executors.newSingleThreadExecutor {
         thread(start = false, name = "Llm-RunLoop") {
-            Log.d(tag, "Dedicated thread for native code: ${Thread.currentThread().name}")
 
             System.loadLibrary("llama-android")
             log_to_android()
             backend_init(false)
-            Log.d(tag, system_info())
             it.run()
         }.apply {
             uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, exception: Throwable ->
-                Log.e(tag, "Unhandled exception", exception)
             }
         }
     }.asCoroutineDispatcher()
@@ -63,11 +60,12 @@ class LLamaAndroid {
     private external fun completion_init(
         context: Long,
         batch: Long,
-        text: String,
+        inputText: String,
         formatChat: Boolean,
         nLen: Int,
-        systemPrompt: String
-        ): Int
+        systemPrompt: String,
+        chatTemplate: String // <-- new parameter
+    ): Int
 
     private external fun completion_loop(
         context: Long,
@@ -83,7 +81,6 @@ class LLamaAndroid {
         return withContext(runLoop) {
             when (val state = threadLocalState.get()) {
                 is State.Loaded -> {
-                    Log.d(tag, "bench(): $state")
                     bench_model(state.context, state.model, state.batch, pp, tg, pl, nr)
                 }
 
@@ -97,7 +94,6 @@ class LLamaAndroid {
             val state = threadLocalState.get()
             when (state) {
                 is State.Loaded -> {
-                    Log.d(tag, "get_embedding(): $state")
                     val embArr =  calculate_embeddings(state.model, state.context, text)
                     return@withContext embArr
                 }
@@ -112,7 +108,6 @@ class LLamaAndroid {
             val state = threadLocalState.get()
             when (state) {
                 is State.Loaded -> {
-                    Log.d(tag, "get_similarity(): $state")
                     val embArr =  get_similarity(emb1, emb2)
                     return@withContext embArr
                 }
@@ -141,7 +136,6 @@ class LLamaAndroid {
                     val sampler = new_sampler(temperature)
                     if (sampler == 0L) throw IllegalStateException("new_sampler() failed")
 
-                    Log.i(tag, "Loaded model $pathToModel")
                     threadLocalState.set(State.Loaded(model, context, batch, sampler))
                 }
                 else -> throw IllegalStateException("Model already loaded")
@@ -149,10 +143,11 @@ class LLamaAndroid {
         }
     }
 
-    fun send(message: String, formatChat: Boolean = false, prompt: String,max_token: Int =256): Flow<String> = flow {
+    fun send(message: String, formatChat: Boolean = false, prompt: String,max_token: Int =256, template: String): Flow<String> = flow {
         when (val state = threadLocalState.get()) {
             is State.Loaded -> {
-                val ncur = IntVar(completion_init(state.context, state.batch, message, formatChat, max_token, prompt))
+
+                val ncur = IntVar(completion_init(state.context, state.batch, message, formatChat, max_token, prompt, template))
                 while (ncur.value <= max_token) {
                     val str = completion_loop(state.context, state.batch, state.sampler, max_token, ncur)
                     if (str == null) {

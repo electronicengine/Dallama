@@ -51,13 +51,11 @@ data class Downloadable(val name: String, val source: Uri, val destination: File
                     val cursor = dm.query(DownloadManager.Query().setFilterById(result.id))
 
                     if (cursor == null) {
-                        Log.e(tag, "dm.query() returned null")
                         return Error("dm.query() returned null")
                     }
 
                     if (!cursor.moveToFirst() || cursor.count < 1) {
                         cursor.close()
-                        Log.i(tag, "cursor.moveToFirst() returned false or cursor.count < 1, download canceled?")
                         return Ready
                     }
 

@@ -26,8 +26,8 @@
 //    }
 
 #define TAG "llama-android.cpp"
-#define LOGi(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
-#define LOGe(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+//#define LOGi(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
+//#define LOGe(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 jclass la_int_var;
 jmethodID la_int_var_value;
@@ -85,13 +85,13 @@ Java_android_llama_cpp_LLamaAndroid_load_1model(JNIEnv *env, jobject, jstring fi
     llama_model_params model_params = llama_model_default_params();
 
     auto path_to_model = env->GetStringUTFChars(filename, 0);
-    LOGi("Loading model from %s", path_to_model);
+    //LOGi("Loading model from %s", path_to_model);
 
     auto model = llama_model_load_from_file(path_to_model, model_params);
     env->ReleaseStringUTFChars(filename, path_to_model);
 
     if (!model) {
-        LOGe("load_model() failed");
+        //LOGe("load_model() failed");
         env->ThrowNew(env->FindClass("java/lang/IllegalStateException"), "load_model() failed");
         return 0;
     }
@@ -112,13 +112,13 @@ Java_android_llama_cpp_LLamaAndroid_new_1context(JNIEnv *env, jobject, jlong jmo
     auto model = reinterpret_cast<llama_model *>(jmodel);
 
     if (!model) {
-        LOGe("new_context(): model cannot be null");
+        //LOGe("new_context(): model cannot be null");
         env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"), "Model cannot be null");
         return 0;
     }
 
     int n_threads = std::max(1, std::min(8, (int) sysconf(_SC_NPROCESSORS_ONLN) - 2));
-    LOGi("Using %d threads", n_threads);
+    //LOGi("Using %d threads", n_threads);
 
     llama_context_params ctx_params = llama_context_default_params();
 
@@ -135,7 +135,7 @@ Java_android_llama_cpp_LLamaAndroid_new_1context(JNIEnv *env, jobject, jlong jmo
     llama_context * context = llama_new_context_with_model(model, ctx_params);
 
     if (!context) {
-        LOGe("llama_new_context_with_model() returned null)");
+        //LOGe("llama_new_context_with_model() returned null)");
         env->ThrowNew(env->FindClass("java/lang/IllegalStateException"),
                       "llama_new_context_with_model() returned null)");
         return 0;
@@ -186,12 +186,12 @@ Java_android_llama_cpp_LLamaAndroid_bench_1model(
 
     const int n_ctx = llama_n_ctx(context);
 
-    LOGi("n_ctx = %d", n_ctx);
+    //LOGi("n_ctx = %d", n_ctx);
 
     int i, j;
     int nri;
     for (nri = 0; nri < nr; nri++) {
-        LOGi("Benchmark prompt processing (pp)");
+        //LOGi("Benchmark prompt processing (pp)");
 
         common_batch_clear(*batch);
 
@@ -205,13 +205,13 @@ Java_android_llama_cpp_LLamaAndroid_bench_1model(
 
         const auto t_pp_start = ggml_time_us();
         if (llama_decode(context, *batch) != 0) {
-            LOGi("llama_decode() failed during prompt processing");
+           // LOGi("llama_decode() failed during prompt processing");
         }
         const auto t_pp_end = ggml_time_us();
 
         // bench text generation
 
-        LOGi("Benchmark text generation (tg)");
+        //LOGi("Benchmark text generation (tg)");
 
         llama_kv_cache_clear(context);
         const auto t_tg_start = ggml_time_us();
@@ -222,9 +222,9 @@ Java_android_llama_cpp_LLamaAndroid_bench_1model(
                 common_batch_add(*batch, 0, i, { j }, true);
             }
 
-            LOGi("llama_decode() text generation: %d", i);
+           // LOGi("llama_decode() text generation: %d", i);
             if (llama_decode(context, *batch) != 0) {
-                LOGi("llama_decode() failed during text generation");
+                //LOGi("llama_decode() failed during text generation");
             }
         }
 
@@ -244,7 +244,7 @@ Java_android_llama_cpp_LLamaAndroid_bench_1model(
         pp_std += speed_pp * speed_pp;
         tg_std += speed_tg * speed_tg;
 
-        LOGi("pp %f t/s, tg %f t/s", speed_pp, speed_tg);
+       // LOGi("pp %f t/s, tg %f t/s", speed_pp, speed_tg);
     }
 
     pp_avg /= double(nr);
@@ -489,40 +489,44 @@ Java_android_llama_cpp_LLamaAndroid_completion_1init(
         jobject,
         jlong context_pointer,
         jlong batch_pointer,
-        jstring jtext,
+        jstring inputText,
         jboolean format_chat,
         jint n_len,
-        jstring systemPrompt
+        jstring systemPrompt,
+        jstring chatTemplate // <-- new parameter
     ) {
 
     cached_token_chars.clear();
 
-    const auto text = env->GetStringUTFChars(jtext, 0);
+    const auto text = env->GetStringUTFChars(inputText, 0);
     const auto prompt = env->GetStringUTFChars(systemPrompt, 0);
+    const auto template_str = env->GetStringUTFChars(chatTemplate, 0);
+
+    std::string chat_template = template_str;
+    // Replace placeholders with actual content
+    size_t pos;
+    while ((pos = chat_template.find("{system}")) != std::string::npos)
+        chat_template.replace(pos, 8, prompt);
+    while ((pos = chat_template.find("{user}")) != std::string::npos)
+        chat_template.replace(pos, 6, text);
+    // Optionally, handle {assistant} or others
 
     const auto context = reinterpret_cast<llama_context *>(context_pointer);
     const auto batch = reinterpret_cast<llama_batch *>(batch_pointer);
 
-//    bool parse_special = (format_chat == JNI_TRUE);
-    bool parse_special = true;
-    std::string chat_prompt;
+    bool parse_special = (format_chat == JNI_TRUE);
 
-    chat_prompt = "<|system|>\n" + std::string(prompt) + "\n"
-                  "<|user|>\n" + std::string(text) + "\n<|assistant|>\n";
-
-    const auto tokens_list = common_tokenize(context, chat_prompt, true, parse_special);
+    const auto tokens_list = common_tokenize(context, chat_template, true, parse_special);
 
     auto n_ctx = llama_n_ctx(context);
     auto n_kv_req = tokens_list.size() + (n_len - tokens_list.size());
 
-    LOGi("n_len = %d, n_ctx = %d, n_kv_req = %d", n_len, n_ctx, n_kv_req);
-
     if (n_kv_req > n_ctx) {
-        LOGe("error: n_kv_req > n_ctx, the required KV cache size is not big enough");
+        //LOGe("error: n_kv_req > n_ctx, the required KV cache size is not big enough");
     }
 
     for (auto id : tokens_list) {
-        LOGi("token: `%s`-> %d ", common_token_to_piece(context, id).c_str(), id);
+        //LOGi("token: `%s`-> %d ", common_token_to_piece(context, id).c_str(), id);
     }
 
     common_batch_clear(*batch);
@@ -536,10 +540,12 @@ Java_android_llama_cpp_LLamaAndroid_completion_1init(
     batch->logits[batch->n_tokens - 1] = true;
 
     if (llama_decode(context, *batch) != 0) {
-        LOGe("llama_decode() failed");
+       // LOGe("llama_decode() failed");
     }
 
-    env->ReleaseStringUTFChars(jtext, text);
+    env->ReleaseStringUTFChars(inputText, text);
+    env->ReleaseStringUTFChars(systemPrompt, prompt);
+    env->ReleaseStringUTFChars(chatTemplate, template_str);
 
     return batch->n_tokens;
 }
@@ -580,7 +586,7 @@ Java_android_llama_cpp_LLamaAndroid_completion_1loop(
     jstring new_token = nullptr;
     if (is_valid_utf8(cached_token_chars.c_str())) {
         new_token = env->NewStringUTF(cached_token_chars.c_str());
-        LOGi("cached: %s, new_token_chars: `%s`, id: %d", cached_token_chars.c_str(), new_token_chars.c_str(), new_token_id);
+        //LOGi("cached: %s, new_token_chars: `%s`, id: %d", cached_token_chars.c_str(), new_token_chars.c_str(), new_token_id);
         cached_token_chars.clear();
     } else {
         new_token = env->NewStringUTF("");
@@ -592,7 +598,7 @@ Java_android_llama_cpp_LLamaAndroid_completion_1loop(
     env->CallVoidMethod(intvar_ncur, la_int_var_inc);
 
     if (llama_decode(context, *batch) != 0) {
-        LOGe("llama_decode() returned null");
+       // LOGe("llama_decode() returned null");
     }
 
     return new_token;

@@ -38,6 +38,7 @@ import java.io.File
 
 import android.app.ActivityManager
 import android.app.DownloadManager
+import android.text.Html
 //import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.view.inputmethod.InputMethodManager
@@ -68,10 +69,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -94,6 +97,7 @@ class MainActivity(
     private val chatModel: LlamaModel = LlamaModel("Chat Model")
     private val embeddingModel: LlamaModel = LlamaModel("Embedding Model")
     val pdfTextMap = mutableStateMapOf<String, Pair<List<String>, List<FloatArray>>>()
+    private var isBlocked by mutableStateOf(false)
 
     var selectedChatModel by mutableStateOf("Select Chat")
     var selectedEmbeddingModel by mutableStateOf("Select Embed")
@@ -109,11 +113,25 @@ class MainActivity(
             DallamaTheme {
                 var drawerState by remember { mutableStateOf(DrawerValue.Closed) }
 
-                ModalNavigationDrawer(
-                    drawerState = rememberDrawerState(drawerState),
-                    drawerContent = { DrawerContent() },
-                    content = { ChatScreenContent() }
-                )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    ModalNavigationDrawer(
+                        drawerState = rememberDrawerState(drawerState),
+                        drawerContent = { DrawerContent() },
+                        content = { ChatScreenContent() },
+                        modifier = Modifier
+                            .then(if (isBlocked) Modifier.alpha(0.5f) else Modifier)
+                            .fillMaxSize()
+                    )
+                    if (isBlocked) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                }
             }
         }
     }
@@ -127,12 +145,15 @@ class MainActivity(
         Box(
             modifier = Modifier
                 .fillMaxHeight()
-                .widthIn(min=0.dp, max=350.dp)
+                .widthIn(min = 0.dp, max = 350.dp)
                 .background(MaterialTheme.colorScheme.primary)
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = {
-                            imm?.hideSoftInputFromWindow((context as Activity).currentFocus?.windowToken, 0)
+                            imm?.hideSoftInputFromWindow(
+                                (context as Activity).currentFocus?.windowToken,
+                                0
+                            )
                         }
                     )
                 }
@@ -268,6 +289,7 @@ class MainActivity(
                             text = { Text(option, color = MaterialTheme.colorScheme.primary) },
                             onClick = {
                                 selectedChatModel = option
+                                onModelSelected(option,  false)
                                 expandedChatModel = false
                             },
                             modifier = Modifier
@@ -300,6 +322,7 @@ class MainActivity(
                             text = { Text(option, color = MaterialTheme.colorScheme.primary) },
                             onClick = {
                                 selectedEmbeddingModel = option
+                                onModelSelected(option, true)
                                 expandedEmbeddingModel = false
                             },
                             modifier = Modifier
@@ -312,6 +335,39 @@ class MainActivity(
                         )
                     }
                 }
+            }
+
+        }
+
+
+    }
+
+    fun onModelSelected(option: String, isEmbedding: Boolean = true) {
+        val selectedModel = option
+        val llamaModel = if (isEmbedding) embeddingModel else chatModel
+        val context = this@MainActivity
+
+        if (!selectedModel.isNullOrBlank() && (selectedModel != "Select Embed" || selectedModel != "Select Chat")) {
+            try {
+                selectedModel.let {
+                    val extFilesDir = getExternalFilesDir(null)
+                    val file = File(extFilesDir, it)
+                    runBlocking {
+                        isBlocked = true
+
+                        if (llamaModel.isLoaded()) {
+                            llamaModel.unload()
+                        }
+                        llamaModel.load(file.absolutePath, isEmbedding)
+                        isBlocked = false
+
+                    }
+                }
+
+            } catch (e: Exception) {
+                isBlocked =false
+                llamaModel.addToMessages("An error accured: ${e.message}", "System")
+                Toast.makeText(context, "${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -340,97 +396,6 @@ class MainActivity(
                 .padding(top = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-
-            Button(
-                onClick = {
-                    if (!selectedChatModel.isNullOrBlank() && selectedChatModel != "Select Chat") {
-                        try {
-                            selectedChatModel?.let {
-                                isChatLoaded = true // Set model as loaded when button is clicked
-                                val extFilesDir = getExternalFilesDir(null)
-                                val file = File(extFilesDir, it)
-                                //Toast.makeText(context, "Selected: ${file.absolutePath}", Toast.LENGTH_SHORT).show()
-                                Log.e("chatModel", "Chat Model yüklenirken hata oluştu:")
-
-                                chatModel.load(file.absolutePath, false)
-                            }
-                        } catch (e: Exception) {
-                            chatModel.addToMessages("An error accured: ${e.message}", "System")
-                            isChatLoaded = false
-                            Toast.makeText(context, "${e.message}", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-
-                    if (!selectedEmbeddingModel.isNullOrBlank() && selectedEmbeddingModel != "Select Embed") {
-                        try {
-                            selectedEmbeddingModel?.let {
-                                isEmbeddingModelLoaded = true // Set model as loaded when button is clicked
-                                val extFilesDir = getExternalFilesDir(null)
-                                val file = File(extFilesDir, it)
-                                //Toast.makeText(context, "Selected: ${file.absolutePath}", Toast.LENGTH_SHORT).show()
-                                Log.e(
-                                    "embeddingModel",
-                                    "embeddingModel yüklenirken hata oluştu:"
-                                )
-                                embeddingModel.load(file.absolutePath, true)
-
-                            }
-                        } catch (e: Exception) {
-                            embeddingModel.addToMessages("An error accured: ${e.message}", "System")
-                            isEmbeddingModelLoaded = false
-                            Toast.makeText(context, "${e.message}", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(if (isChatLoaded && isEmbeddingModelLoaded)
-                    "Loaded"
-                else if(isChatLoaded)
-                    "Chat Loaded"
-                else if(isEmbeddingModelLoaded)
-                    "Embed Loaded"
-                else "Load", color = MaterialTheme.colorScheme.primary)
-            }
-
-            Button(
-                onClick = {
-                    Toast.makeText(context, "Model cleared", Toast.LENGTH_SHORT).show()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Unload", color = MaterialTheme.colorScheme.primary)
-            }
-
-            Button(
-                onClick = {
-                    val extFilesDir = getExternalFilesDir(null)
-                    var file = File(extFilesDir, selectedChatModel)
-                    if(file.exists()){
-                        file.delete()
-                        Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
-                    }
-
-                    file = File(extFilesDir, selectedEmbeddingModel)
-                    if(file.exists()){
-                        file.delete()
-                        Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Delete", color = MaterialTheme.colorScheme.primary)
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
             Button(
                 onClick = {
                     Toast.makeText(context, "Metrics Showing in Chat", Toast.LENGTH_SHORT).show()
@@ -439,18 +404,7 @@ class MainActivity(
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
                 modifier = Modifier.weight(1f)
             ) {
-                Text("Bench", color = MaterialTheme.colorScheme.primary)
-            }
-
-            Button(
-                onClick = {
-                    Toast.makeText(context, "Messages are Cleared", Toast.LENGTH_SHORT).show()
-                    chatModel.clear()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Clear Messages", color = MaterialTheme.colorScheme.primary)
+                Text("Bench Chat Model", color = MaterialTheme.colorScheme.primary)
             }
 
         }
@@ -607,6 +561,34 @@ class MainActivity(
                 .padding(start = 5.dp)
                 .fillMaxSize()
         )
+
+        Text(
+            text = "Chat Template",
+            color =  MaterialTheme.colorScheme.background,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        BasicTextField(
+            value = chatModel.chatTemplate,
+            onValueChange = { chatModel.chatTemplate = it },
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
+            textStyle = TextStyle(
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 20.sp
+            ),
+            modifier = Modifier
+                .background(
+                    MaterialTheme.colorScheme.background,
+                    shape = RoundedCornerShape(10.dp)
+                )
+                .border(
+                    2.dp,
+                    MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(10.dp)
+                )
+                .height(30.dp)
+                .padding(start = 5.dp)
+                .fillMaxSize()
+        )
     }
 
     // Chat screen content
@@ -667,7 +649,6 @@ fun ChatScreen(
                         }
                         statusText = pdfTextMap.keys.joinToString(separator = "\n") { name -> if (name.length > 24) name.take(24) + "..." else name }
                     } catch (e: Exception) {
-                        Log.e("PDF", "Parse error: ${e.message}")
                         statusText = "Parse failed."
                     } finally {
                         isLoading = false
@@ -687,7 +668,10 @@ fun ChatScreen(
                 detectTapGestures(
                     onTap = {
                         focusManager.clearFocus()
-                        imm?.hideSoftInputFromWindow((context as Activity).currentFocus?.windowToken, 0)
+                        imm?.hideSoftInputFromWindow(
+                            (context as Activity).currentFocus?.windowToken,
+                            0
+                        )
                     }
                 )
             }
@@ -742,15 +726,13 @@ private fun handleSendMessage(
                             val sim = embeddingModel.calculateSimilarity(embText, emb)
                             Pair(sim, texts[idx])
                         }
-                    }.sortedByDescending { it.first }.take(1)
+                    }.sortedByDescending { it.first }.take(2)
                 }
 
                 val top2Text = top2.joinToString(separator = "\n") { " ${it.second}" }
-//                top2.forEach { pair ->
-//                    embeddingModel.addToMessages("Relevant Document Info: ${pair.second}", "System")
-//                }
-                //chatModel.updateSystemMessage("Give answer according to this additional Document Info: $top2Text")
-                chatModel.updateMessage(messageText.text + "Relevant Info: $top2Text", "You")
+
+                chatModel.updateSystemMessage("Relevant Document Info: $top2Text")
+                chatModel.updateMessage("${messageText.text}", "You")
                 onMessageCleared(TextFieldValue(""))
                 chatModel.send()
 
@@ -857,7 +839,9 @@ private fun ChatInputRow(
         Button(
             onClick = onSendClick,
             enabled = !isLoading,
-            modifier = Modifier.padding(end = 0.dp).width(90.dp)
+            modifier = Modifier
+                .padding(end = 0.dp)
+                .width(90.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Send,
@@ -867,7 +851,6 @@ private fun ChatInputRow(
         }
     }
 }
-
 @Composable
 fun MessageCard(message: Message) {
     val isUser = message.sender == "You"
@@ -891,7 +874,7 @@ fun MessageCard(message: Message) {
             }
         }
     }
-
+    val fontColor =  MaterialTheme.colorScheme.background
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
@@ -914,12 +897,32 @@ fun MessageCard(message: Message) {
                     val dots = ".".repeat(dotCount.value)
                     Text(text = "thinking$dots")
                 } else {
-                    Text(text = message.content)
+                    // Render HTML content in a native TextView
+                    androidx.compose.ui.viewinterop.AndroidView(
+                        factory = { context ->
+                            android.widget.TextView(context).apply {
+                                setText(
+                                    android.text.Html.fromHtml(message.content, android.text.Html.FROM_HTML_MODE_LEGACY)
+                                )
+                                setTextColor(fontColor.toArgb())
+                                textSize = 16f
+                                // Optional: enable links
+                                linksClickable = true
+                                movementMethod = android.text.method.LinkMovementMethod.getInstance()
+                            }
+                        },
+                        update = { textView ->
+                            textView.setText(
+                                android.text.Html.fromHtml(message.content, android.text.Html.FROM_HTML_MODE_LEGACY)
+                            )
+                        }
+                    )
                 }
             }
         }
     }
 }
+
 
 @Preview(showBackground = true)
 @Composable

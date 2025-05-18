@@ -10,7 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.InputStream
 
-private const val MAX_CHUNK_SIZE = 64
+private const val MAX_CHUNK_SIZE = 24
 
 class PdfTextParser(private val context: Context) {
 
