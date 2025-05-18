@@ -80,7 +80,7 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import kotlinx.coroutines.launch
 
 
-data class Message(val content: String, val sender: String)
+data class Message(val content: String, val sender: String, val timestamp: Long)
 // lateinit var tts: TextToSpeech
 
 class MainActivity(
@@ -89,11 +89,11 @@ class MainActivity(
 ): ComponentActivity() {
 
     private val downloadManager by lazy { downloadManager ?: getSystemService<DownloadManager>()!! }
-    private val chatModel: LlamaModel by viewModels()
-    private val embeddingModel: LlamaModel by viewModels()
+    private val chatModel: LlamaModel = LlamaModel("Chat Model")
+    private val embeddingModel: LlamaModel = LlamaModel("Embedding Model")
 
-    var selectedChatModel by mutableStateOf("Select chat")
-    var selectedEmbeddingModel by mutableStateOf("Select embed")
+    var selectedChatModel by mutableStateOf("Select Chat")
+    var selectedEmbeddingModel by mutableStateOf("Select Embed")
 
     //private lateinit var tts: TextToSpeech  // Global TTS instance
 
@@ -123,7 +123,8 @@ class MainActivity(
 
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxHeight()
+                .widthIn(min=0.dp, max=350.dp)
                 .background(MaterialTheme.colorScheme.primary)
                 .pointerInput(Unit) {
                     detectTapGestures(
@@ -298,7 +299,13 @@ class MainActivity(
                                 selectedEmbeddingModel = option
                                 expandedEmbeddingModel = false
                             },
-                            modifier = Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(10.dp))
+                            modifier = Modifier
+                                .background(
+                                    MaterialTheme.colorScheme.background,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .padding(0.dp) // İçerik için boşluk
+
                         )
                     }
                 }
@@ -309,7 +316,9 @@ class MainActivity(
     // Model control buttons (Load, Unload, Delete)
     @Composable
     fun ModelControlButtons() {
-        var isModelLoaded by remember { mutableStateOf(false) }
+        var isChatLoaded by remember { mutableStateOf(false) }
+        var isEmbeddingModelLoaded by remember { mutableStateOf(false) }
+
         val context = LocalContext.current
         val REQUEST_CODE = 1001  // constant code for request permissions
         val requestPermissionLauncher = rememberLauncherForActivityResult(
@@ -331,35 +340,52 @@ class MainActivity(
 
             Button(
                 onClick = {
-                    try {
+                    if (!selectedChatModel.isNullOrBlank() && selectedChatModel != "Select Chat") {
+                        try {
+                            selectedChatModel?.let {
+                                isChatLoaded = true // Set model as loaded when button is clicked
+                                val extFilesDir = getExternalFilesDir(null)
+                                val file = File(extFilesDir, it)
+                                //Toast.makeText(context, "Selected: ${file.absolutePath}", Toast.LENGTH_SHORT).show()
+                                Log.e("chatModel", "Chat Model yüklenirken hata oluştu:")
 
-                        selectedChatModel?.let {
-                            isModelLoaded = true // Set model as loaded when button is clicked
-                            val extFilesDir = getExternalFilesDir(null)
-                            val file = File(extFilesDir, it)
-                            //Toast.makeText(context, "Selected: ${file.absolutePath}", Toast.LENGTH_SHORT).show()
-                            Log.e("chatModel", "Model yüklenirken hata oluştu:")
-
-                            chatModel.load(file.absolutePath)
+                                chatModel.load(file.absolutePath, false)
+                            }
+                        } catch (e: Exception) {
+                            isChatLoaded = false
+                            Toast.makeText(context, "${e.message}", Toast.LENGTH_SHORT).show()
                         }
+                    }
 
-                        selectedEmbeddingModel?.let {
-                            isModelLoaded = true // Set model as loaded when button is clicked
-                            val extFilesDir = getExternalFilesDir(null)
-                            val file = File(extFilesDir, it)
-                            //Toast.makeText(context, "Selected: ${file.absolutePath}", Toast.LENGTH_SHORT).show()
-                            Log.e("chatModel", "Model yüklenirken hata oluştu:")
-
-                            embeddingModel.load(file.absolutePath)
+                    if (!selectedEmbeddingModel.isNullOrBlank() && selectedEmbeddingModel != "Select Embed") {
+                        try {
+                            selectedEmbeddingModel?.let {
+                                isEmbeddingModelLoaded = true // Set model as loaded when button is clicked
+                                val extFilesDir = getExternalFilesDir(null)
+                                val file = File(extFilesDir, it)
+                                //Toast.makeText(context, "Selected: ${file.absolutePath}", Toast.LENGTH_SHORT).show()
+                                Log.e(
+                                    "embeddingModel",
+                                    "embeddingModel yüklenirken hata oluştu:"
+                                )
+                                embeddingModel.load(file.absolutePath, true)
+                            }
+                        } catch (e: Exception) {
+                            isEmbeddingModelLoaded = false
+                            Toast.makeText(context, "${e.message}", Toast.LENGTH_SHORT).show()
                         }
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "${e.message}", Toast.LENGTH_SHORT).show()
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
                 modifier = Modifier.weight(1f)
             ) {
-                Text(if (isModelLoaded) "Loaded" else "Load", color = MaterialTheme.colorScheme.primary)
+                Text(if (isChatLoaded && isEmbeddingModelLoaded)
+                    "Loaded"
+                else if(isChatLoaded)
+                    "Chat Loaded"
+                else if(isEmbeddingModelLoaded)
+                    "Embed Loaded"
+                else "Load", color = MaterialTheme.colorScheme.primary)
             }
 
             Button(
@@ -374,12 +400,18 @@ class MainActivity(
 
             Button(
                 onClick = {
-/*
                     val extFilesDir = getExternalFilesDir(null)
-                    val file = File(extFilesDir, selectedOption)
-                    file.delete()
-                    Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
-*/
+                    var file = File(extFilesDir, selectedChatModel)
+                    if(file.exists()){
+                        file.delete()
+                        Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
+                    }
+
+                    file = File(extFilesDir, selectedEmbeddingModel)
+                    if(file.exists()){
+                        file.delete()
+                        Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
                 modifier = Modifier.weight(1f)
@@ -580,7 +612,8 @@ class MainActivity(
                     .padding(innerPadding)
                     .padding(end = 0.dp)
                     .fillMaxSize(),
-                chatModel
+                chatModel,
+                embeddingModel
             )
         }
     }
@@ -589,7 +622,7 @@ class MainActivity(
 }
 
 @Composable
-fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel) {
+fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel, embeddingModel: LlamaModel) {
     var messageText by remember { mutableStateOf(TextFieldValue("")) }
     val context = LocalContext.current
     val imm = ContextCompat.getSystemService(context, InputMethodManager::class.java)
@@ -619,7 +652,7 @@ fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel) {
                 .fillMaxWidth(),
         ) {
 
-            items(chatModel.messages) { message ->
+            items((chatModel.messages + embeddingModel.messages).sortedBy { it.timestamp }) { message ->
                 MessageCard(message = message)
             }
         }
@@ -630,6 +663,7 @@ fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel) {
 
         val scope = rememberCoroutineScope()
         var statusText by remember { mutableStateOf("") }
+        val pdfTextMap = remember { mutableStateMapOf<String, Pair<List<String>, List<FloatArray>>>() }
 
         val launcher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.OpenDocument(),
@@ -640,13 +674,20 @@ fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel) {
                         statusText = "Parsing PDF..."
                         try {
                             val text = parser.parseTextFromPdf(it)
-                            text.forEachIndexed { index, part ->
-                                chatModel.updateMessage("hello", "You")
+                            val fileName = parser.getFileNameFromUri(it) ?: "Unknown.pdf"
+                            var embeddings: List<FloatArray> = emptyList()
+                            if (embeddingModel.isLoaded()) {
+                                statusText = "Calculating embeddings..."
+                                embeddings = text.map { part ->
+                                    embeddingModel.calculateEmbedding(part)
+                                }
+                            } else {
+                                chatModel.addToMessages("Embedding model is not loaded!", "System")
                             }
 
-                            // Get file name from URI
-                            val fileName = parser.getFileNameFromUri(it)
-                            statusText = fileName ?: "PDF parsed."
+                            pdfTextMap[fileName] = Pair(text, embeddings)
+                            chatModel.addToMessages("File: $fileName is parsed successfully", "System")
+                            statusText = pdfTextMap.keys.joinToString(separator = "\n")
                         } catch (e: Exception) {
                             Log.e("PDF", "Parse error: ${e.message}")
                             statusText = "Parse failed."
@@ -700,7 +741,7 @@ fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel) {
                 value = messageText,
                 onValueChange = { messageText = it },
                 label = { Text("Message") },
-                modifier = Modifier.fillMaxWidth(0.7f),
+                modifier = Modifier.fillMaxWidth(0.8f),
                 interactionSource = interactionSource
             )
 
@@ -713,7 +754,7 @@ fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel) {
                     }
 
                 },
-                modifier = Modifier.padding(end = 2.dp).width(60.dp)
+                modifier = Modifier.padding(end = 0.dp).width(90.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Send,
@@ -732,8 +773,15 @@ fun ChatScreen(modifier: Modifier = Modifier, chatModel: LlamaModel) {
 @Composable
 fun MessageCard(message: Message) {
     val isUser = message.sender == "You"
-    val bcolor = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+    val isSystem = message.sender.contains("System")
+    val isBot = message.sender.contains("Bot")
 
+    val bcolor = when {
+        isUser -> MaterialTheme.colorScheme.primary
+        isSystem -> MaterialTheme.colorScheme.secondary
+        isBot -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.surface
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
@@ -748,6 +796,7 @@ fun MessageCard(message: Message) {
             Column(modifier = Modifier.padding(8.dp)) {
                 Text(
                     text = message.sender,
+                    color = MaterialTheme.colorScheme.outline,
                     style = TextStyle(fontWeight = FontWeight.Bold),
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
@@ -761,8 +810,9 @@ fun MessageCard(message: Message) {
 @Composable
 fun DefaultPreview() {
     val mockChatModel = remember { LlamaModel() } // Create ViewModel instance manually
+    val mockEmbeddingModel = remember { LlamaModel() } // Create ViewModel instance manually
 
     DallamaTheme {
-        ChatScreen(chatModel = mockChatModel) // Pass the ViewModel to ChatScreen
+        ChatScreen(chatModel = mockChatModel, embeddingModel = mockEmbeddingModel) // Pass the ViewModel to ChatScreen
     }
 }

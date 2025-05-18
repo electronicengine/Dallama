@@ -1,6 +1,7 @@
 package com.example.dallama
 
 import android.llama.cpp.LLamaAndroid
+import android.system.SystemCleaner
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -8,16 +9,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 
-class LlamaModel(private val llamaAndroid: LLamaAndroid = LLamaAndroid.instance()): ViewModel() {
+class LlamaModel(val name: String = "Chat Model") {
     companion object {
         @JvmStatic
         private val NanosPerSecond = 1_000_000_000.0
     }
-
+    private val llamaAndroid: LLamaAndroid = LLamaAndroid()
+    private var loaded: Boolean = false
     private val tag: String? = this::class.simpleName
     var maxTokeSize by mutableStateOf(TextFieldValue("256"))
     var prompt by mutableStateOf(TextFieldValue("You are helpful assistant."))
@@ -25,86 +30,81 @@ class LlamaModel(private val llamaAndroid: LLamaAndroid = LLamaAndroid.instance(
     var topP by mutableStateOf(TextFieldValue("0.9"))
     var temperature by mutableStateOf(TextFieldValue("0.3"))
 
-    var messages by mutableStateOf(listOf<Message>(Message( "Initializing...","System")))
+    var messages by mutableStateOf(listOf<Message>(Message("Select a Model! ", "$name System", System.currentTimeMillis())))
         private set
 
-    var message by mutableStateOf(Message("", ""))
+    var message by mutableStateOf(Message("", "", System.currentTimeMillis()))
         private set
 
-    override fun onCleared() {
-        super.onCleared()
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-        viewModelScope.launch {
+    fun clearResources() {
+        scope.launch {
             try {
                 llamaAndroid.unload()
+                loaded = false
             } catch (exc: IllegalStateException) {
-                messages = messages + Message( exc.message ?: "Unknown error","System")
+                messages = messages + Message(exc.message ?: "Unknown error", "$name System", System.currentTimeMillis())
             }
         }
     }
 
     fun send() {
-        // Add message to the list
         messages = messages + message.copy()
-        messages = messages + Message( "","Bot")
-
-        viewModelScope.launch {
-            llamaAndroid.send(message.content,false, prompt.text, maxTokeSize.text.toInt())
-
+        messages = messages + Message("", "$name Bot", System.currentTimeMillis())
+        scope.launch {
+            llamaAndroid.send(message.content, false, prompt.text, maxTokeSize.text.toInt())
                 .catch { exc ->
                     Log.e(tag, "send() failed", exc)
-                    Log.e(tag, "send() failed", exc)
-                    messages = messages + Message( exc.message ?: "Unknown error","System")
+                    messages = messages + Message(exc.message ?: "Unknown error", "$name System", System.currentTimeMillis())
                 }
                 .collect { response ->
-
                     messages = messages.dropLast(1) + messages.last().copy(content = messages.last().content + response)
                 }
         }
     }
 
     fun bench(pp: Int, tg: Int, pl: Int, nr: Int = 1) {
-        viewModelScope.launch {
+        scope.launch {
             try {
                 val start = System.nanoTime()
                 val warmupResult = llamaAndroid.bench(pp, tg, pl, nr)
                 val end = System.nanoTime()
-
-                // Convert warmup result to a Message
-                messages = messages + Message( "Warmup Result: $warmupResult","System")
-
+                messages = messages + Message("Warmup Result: $warmupResult", "$name System", System.currentTimeMillis())
                 val warmup = (end - start).toDouble() / NanosPerSecond
-                messages = messages + Message( "Warm-up time: $warmup seconds, please wait...","System")
-
+                messages = messages + Message("Warm-up time: $warmup seconds, please wait...", "$name System", System.currentTimeMillis())
                 if (warmup > 5.0) {
-                    messages = messages + Message( "Warm-up took too long, aborting benchmark","System")
+                    messages = messages + Message("Warm-up took too long, aborting benchmark", "$name System", System.currentTimeMillis())
                     return@launch
                 }
-
                 val benchmarkResult = llamaAndroid.bench(512, 128, 1, 3)
-                messages = messages + Message( "Benchmark Result: $benchmarkResult","System")
-
+                messages = messages + Message("Benchmark Result: $benchmarkResult", "$name System", System.currentTimeMillis())
             } catch (exc: IllegalStateException) {
                 Log.e(tag, "bench() failed", exc)
-                messages = messages + Message( exc.message ?: "Unknown error","System")
+                messages = messages + Message(exc.message ?: "Unknown error", "$name System", System.currentTimeMillis())
             }
         }
     }
 
-    fun load(pathToModel: String, embedding : Boolean = false) {
-        viewModelScope.launch {
+    fun load(pathToModel: String, embedding: Boolean = false) {
+        scope.launch {
             try {
                 llamaAndroid.load(pathToModel, temperature.text.toFloat(), embedding)
-                messages = messages + Message("Loaded: $pathToModel","System")
+                messages = messages + Message("Loaded: $pathToModel", "$name System", System.currentTimeMillis())
+                loaded = true
             } catch (exc: IllegalStateException) {
                 Log.e(tag, "load() failed", exc)
-                messages = messages + Message(exc.message ?: "Unknown error","System")
+                messages = messages + Message(exc.message ?: "Unknown error", "$name System", System.currentTimeMillis())
             }
         }
     }
 
-    fun updateMessage(newMessage: String, sender: String = "Bot") {
-        message = Message(newMessage, sender)
+    fun updateMessage(newMessage: String, sender: String = "$name Bot") {
+        message = Message(newMessage, sender, System.currentTimeMillis())
+    }
+
+    fun addToMessages(newMessage: String, sender: String = "$name Bot") {
+        messages = messages + Message(newMessage, sender, System.currentTimeMillis())
     }
 
     fun clear() {
@@ -112,7 +112,24 @@ class LlamaModel(private val llamaAndroid: LLamaAndroid = LLamaAndroid.instance(
     }
 
     fun log(message: String) {
-        messages = messages + Message(message, "Log")
+        messages = messages + Message(message, "$name Log", System.currentTimeMillis())
+    }
+
+    fun isLoaded(): Boolean {
+        return loaded
+    }
+
+    suspend fun calculateEmbedding(text: String): FloatArray {
+        scope.launch {
+            try {
+                llamaAndroid.get_embedding(text)
+                loaded = true
+            } catch (exc: IllegalStateException) {
+                Log.e(tag, "load() failed", exc)
+                messages = messages + Message(exc.message ?: "Unknown error", "$name System", System.currentTimeMillis())
+            }
+        }
+        return FloatArray(0)
     }
 }
 

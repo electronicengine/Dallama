@@ -21,15 +21,10 @@ class LLamaAndroid {
         thread(start = false, name = "Llm-RunLoop") {
             Log.d(tag, "Dedicated thread for native code: ${Thread.currentThread().name}")
 
-            // No-op if called more than once.
             System.loadLibrary("llama-android")
-
-            // Set llama log handler to Android
             log_to_android()
             backend_init(false)
-
             Log.d(tag, system_info())
-
             it.run()
         }.apply {
             uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, exception: Throwable ->
@@ -97,12 +92,14 @@ class LLamaAndroid {
         }
     }
 
-    suspend fun get_embedding(text: String){
+    suspend fun get_embedding(text: String) : FloatArray {
         return withContext(runLoop) {
-            when (val state = threadLocalState.get()) {
+            val state = threadLocalState.get()
+            when (state) {
                 is State.Loaded -> {
                     Log.d(tag, "get_embedding(): $state")
-                    calculate_embeddings(state.model, state.context, text)
+                    val calculateEmbeddings = calculate_embeddings(state.model, state.context, text)
+                    calculateEmbeddings
                 }
 
                 else -> throw IllegalStateException("No model loaded")
@@ -175,27 +172,21 @@ class LLamaAndroid {
         }
     }
 
-    companion object {
-        private class IntVar(value: Int) {
-            @Volatile
-            var value: Int = value
-                private set
+    private class IntVar(value: Int) {
+        @Volatile
+        var value: Int = value
+            private set
 
-            fun inc() {
-                synchronized(this) {
-                    value += 1
-                }
+        fun inc() {
+            synchronized(this) {
+                value += 1
             }
         }
-
-        private sealed interface State {
-            data object Idle: State
-            data class Loaded(val model: Long, val context: Long, val batch: Long, val sampler: Long): State
-        }
-
-        // Enforce only one instance of Llm.
-        private val _instance: LLamaAndroid = LLamaAndroid()
-
-        fun instance(): LLamaAndroid = _instance
     }
+
+    private sealed interface State {
+        data object Idle: State
+        data class Loaded(val model: Long, val context: Long, val batch: Long, val sampler: Long): State
+    }
+
 }
