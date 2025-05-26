@@ -6,15 +6,15 @@ plugins {
 
 
 android {
-    namespace = "com.example.dallama"
+    namespace = "com.llama.dallama"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.dallama"
+        applicationId = "com.llama.dallama"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

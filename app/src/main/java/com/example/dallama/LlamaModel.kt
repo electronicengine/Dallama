@@ -1,4 +1,4 @@
-package com.example.dallama
+package com.llama.dallama
 
 import android.llama.cpp.LLamaAndroid
 import android.system.SystemCleaner
