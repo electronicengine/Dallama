@@ -108,7 +108,7 @@ Java_android_llama_cpp_LLamaAndroid_free_1model(JNIEnv *, jobject, jlong model) 
 
 extern "C"
 JNIEXPORT jlong JNICALL
-Java_android_llama_cpp_LLamaAndroid_new_1context(JNIEnv *env, jobject, jlong jmodel, jboolean embedding) {
+Java_android_llama_cpp_LLamaAndroid_new_1context(JNIEnv *env, jobject, jlong jmodel, jboolean embedding, jint n_threads, jint pooling_type) {
     auto model = reinterpret_cast<llama_model *>(jmodel);
 
     if (!model) {
@@ -117,7 +117,7 @@ Java_android_llama_cpp_LLamaAndroid_new_1context(JNIEnv *env, jobject, jlong jmo
         return 0;
     }
 
-    int n_threads = std::max(1, std::min(8, (int) sysconf(_SC_NPROCESSORS_ONLN) - 2));
+//    int n_threads = std::max(1, std::min(8, (int) sysconf(_SC_NPROCESSORS_ONLN) - 2));
     //LOGi("Using %d threads", n_threads);
 
     llama_context_params ctx_params = llama_context_default_params();
@@ -128,7 +128,7 @@ Java_android_llama_cpp_LLamaAndroid_new_1context(JNIEnv *env, jobject, jlong jmo
     ctx_params.embeddings = embedding;
 
     if(embedding){
-        ctx_params.pooling_type = llama_pooling_type::LLAMA_POOLING_TYPE_MEAN;
+        ctx_params.pooling_type = static_cast<enum llama_pooling_type>(pooling_type);
         ctx_params.n_batch = ctx_params.n_ctx;
     }
 

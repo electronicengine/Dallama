@@ -23,6 +23,10 @@ data class Downloadable(val name: String, val source: Uri, val destination: File
             downloadable: Downloadable,
             activity: Activity
         ): Long {
+            if (downloadable.destination.exists()) {
+                downloadable.destination.delete()
+            }
+
             val request = DownloadManager.Request(downloadable.source)
                 .setTitle(downloadable.name)
                 .setDescription("Downloading ${downloadable.name}")

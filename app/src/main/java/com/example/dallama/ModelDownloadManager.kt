@@ -38,8 +38,8 @@ class ModelDownloadManager(val activity:  MainActivity) {
             "https://huggingface.co/bartowski/Dolphin3.0-Llama3.2-3B-GGUF/resolve/main/Dolphin3.0-Llama3.2-3B-Q4_K_M.gguf?download=true"
         ),
         "embed" to Pair(
-            "embedding_mxbai-base-v2.gguf",
-            "https://huggingface.co/DevQuasar/mixedbread-ai.mxbai-rerank-base-v2-GGUF/resolve/main/mixedbread-ai.mxbai-rerank-base-v2.Q4_K_M.gguf?download=true"
+            "embedding_mxbai-base-v1.gguf",
+            "https://huggingface.co/ChristianAzinn/mxbai-embed-large-v1-gguf/resolve/main/mxbai-embed-large-v1.Q4_K_M.gguf?download=true"
         )
     )
 
@@ -86,10 +86,14 @@ class ModelDownloadManager(val activity:  MainActivity) {
         return downloadId
     }
 
+
     fun downloadDefaultModels() {
         activity.isBlocked.value = true
         val extFilesDir = activity.getExternalFilesDir(null)
+        val fileList = extFilesDir?.listFiles()?.filter { it.isFile }?.map { it.name } ?: emptyList()
+
         val downloadIds = mutableListOf<Long>()
+
 
         DEFAULT_MODELS.forEach { (_, modelInfo) ->
             val (fileName, url) = modelInfo
@@ -100,6 +104,7 @@ class ModelDownloadManager(val activity:  MainActivity) {
             )
             val downloadId = Downloadable.enqueue(downloadManager, downloadable, activity)
             downloadIds.add(downloadId)
+            Thread.sleep(100) // 100ms delay
         }
 
         if (downloadIds.isNotEmpty()) {

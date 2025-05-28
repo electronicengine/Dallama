@@ -30,8 +30,10 @@ class LlamaModel(val name: String = "Chat Model") {
     var topP by mutableStateOf(TextFieldValue("0.9"))
     var temperature by mutableStateOf(TextFieldValue("0.3"))
     var chatTemplate = "<|system|>\n{system}\n<|user|>\n{user}\n<|assistant|>\n"
+    var nThread by mutableStateOf(TextFieldValue("4"))
+    var poolingType by mutableStateOf(TextFieldValue("1"))
 
-    var messages by mutableStateOf(listOf<Message>(Message("Select a Model! ", "$name System", System.currentTimeMillis())))
+    var messages by mutableStateOf(listOf<Message>(Message("Swipe to Right and select a model! ", "$name System", System.currentTimeMillis())))
         private set
 
     var message by mutableStateOf(Message("", "", System.currentTimeMillis()))
@@ -90,7 +92,7 @@ class LlamaModel(val name: String = "Chat Model") {
 
     suspend fun load(pathToModel: String, embedding: Boolean = false) {
         try {
-            llamaAndroid.load(pathToModel, temperature.text.toFloat(), embedding)
+            llamaAndroid.load(pathToModel, temperature.text.toFloat(), embedding, nThread.text.toInt(), poolingType.text.toInt())
             messages = messages + Message("Loaded: $pathToModel", "$name System", System.currentTimeMillis())
             loaded = true
         } catch (exc: IllegalStateException) {

@@ -204,12 +204,14 @@ fun ModelSelectionDropdown() {
     var expandedChatModel by remember { mutableStateOf(false) }
     var expandedEmbeddingModel by remember { mutableStateOf(false) }
     val context = LocalContext.current
-
+    val activity = context as MainActivity
     var modelList by remember { mutableStateOf(emptyList<String>()) }
 
-    var extFilesDir = context.getExternalFilesDir(null)
-    extFilesDir?.listFiles()?.let { files ->
-        modelList = files.map { it.name }
+    val extFilesDir = activity.getExternalFilesDir(null)
+    val fileList = extFilesDir?.listFiles()?.filter { it.isFile }?.map { it.name } ?: emptyList()
+
+    fileList.let { files ->
+        modelList = files.map { it }
     }
 
     Row(
@@ -409,6 +411,33 @@ fun ModelConfigs() {
                     .height(30.dp)
                     .padding(start = 5.dp)
             )
+            Text(
+                text = "n_threads",
+                color =  MaterialTheme.colorScheme.background,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            BasicTextField(
+                value = activity.chatModel.nThread,
+                onValueChange = { activity.chatModel.nThread = it },
+                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
+                textStyle = TextStyle(
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 20.sp
+
+                ),
+                modifier = Modifier
+                    .background(
+                        MaterialTheme.colorScheme.background,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .border(
+                        2.dp,
+                        MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .height(30.dp)
+                    .padding(start = 5.dp)
+            )
         }
 
         Column() {
@@ -466,6 +495,33 @@ fun ModelConfigs() {
                     .height(30.dp)
                     .padding(start = 5.dp)
 
+            )
+
+            Text(
+                text = "Embedding Pooling Type",
+                color =  MaterialTheme.colorScheme.background,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            BasicTextField(
+                value = activity.embeddingModel.poolingType,
+                onValueChange = { activity.embeddingModel.poolingType = it },
+                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
+                textStyle = TextStyle(
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 20.sp
+                ),
+                modifier = Modifier
+                    .background(
+                        MaterialTheme.colorScheme.background,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .border(
+                        2.dp,
+                        MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .height(30.dp)
+                    .padding(start = 5.dp)
             )
         }
     }
@@ -574,7 +630,7 @@ fun DeleteButtonDropdown(
             ),
             enabled = fileList.isNotEmpty()
         ) {
-            Text("Delete File", color = MaterialTheme.colorScheme.error)
+            Text("Select to Delete", color = MaterialTheme.colorScheme.error)
         }
         DropdownMenu(
             expanded = expanded,

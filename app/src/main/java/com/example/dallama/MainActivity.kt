@@ -96,6 +96,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
+import com.example.dallama.AppDatabase
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -108,11 +110,9 @@ class MainActivity(
 ): ComponentActivity() {
 
     var isBlocked = mutableStateOf(false)
-    val downloadManager by lazy { downloadManager ?: getSystemService<DownloadManager>()!! }
     val chatModel: LlamaModel = LlamaModel("Chat Model")
     val embeddingModel: LlamaModel = LlamaModel("Embedding Model")
     val pdfTextMap = mutableStateMapOf<String, Pair<List<String>, List<FloatArray>>>()
-    var currentDownloadStatus by mutableStateOf("Preparing download...")
     var selectedChatModel by mutableStateOf("Select Chat")
     var selectedEmbeddingModel by mutableStateOf("Select Embed")
 
@@ -120,9 +120,13 @@ class MainActivity(
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        //AppDatabase.getInstance(this)
+
         enableEdgeToEdge()
         PDFBoxResourceLoader.init(getApplicationContext());
         modelDownloadManager = ModelDownloadManager(this)
+
+
 
 
         setContent {

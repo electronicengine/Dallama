@@ -35,7 +35,7 @@ class LLamaAndroid {
     private external fun log_to_android()
     private external fun load_model(filename: String): Long
     private external fun free_model(model: Long)
-    private external fun new_context(model: Long, embedding: Boolean): Long
+    private external fun new_context(model: Long, embedding: Boolean, n_threads: Int, pooling_type: Int): Long
     private external fun free_context(context: Long)
     private external fun backend_init(numa: Boolean)
     private external fun backend_free()
@@ -118,7 +118,7 @@ class LLamaAndroid {
     }
 
 
-    suspend fun load(pathToModel: String, temperature: Float, embedding: Boolean) {
+    suspend fun load(pathToModel: String, temperature: Float, embedding: Boolean, nThreads: Int, poolingType: Int) {
         withContext(runLoop) {
             when (threadLocalState.get()) {
                 is State.Idle -> {
@@ -126,7 +126,7 @@ class LLamaAndroid {
                     if (model == 0L)  throw IllegalStateException("load_model() failed")
                     _model = model
 
-                    val context = new_context(model, embedding)
+                    val context = new_context(model, embedding ,nThreads, poolingType)
                     if (context == 0L) throw IllegalStateException("new_context() failed")
                     _context = context
 

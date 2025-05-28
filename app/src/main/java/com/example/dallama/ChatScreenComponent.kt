@@ -53,9 +53,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.example.dallama.AppDatabase
+//import com.example.dallama.AppDatabase
+//import com.example.dallama.PdfChunkEntity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-
 
 // Chat screen content
 @Composable
@@ -114,6 +118,7 @@ fun ChatScreen(
                                 embeddingModel.calculateEmbedding(part)
                             }
                             pdfTextMap[fileName] = Pair(text, embeddings)
+
                         } else {
                             embeddingModel.addToMessages("Embedding model is not loaded! Select a embedding model", "System")
                         }
@@ -154,12 +159,16 @@ fun ChatScreen(
             )
         }
 
+
         PdfStatusAndButton(
             isTextFieldFocused = isTextFieldFocused,
             statusText = statusText,
             isLoading = isLoading,
             onPdfButtonClick = { launcher.launch(arrayOf("application/pdf")) }
         )
+
+
+
 
         ChatInputRow(
             messageText = messageText,
@@ -200,6 +209,10 @@ private fun handleSendMessage(
                 }
 
                 val top2Text = top2.joinToString(separator = "\n") { " ${it.second}" }
+                top2.forEachIndexed { index, part ->
+                    embeddingModel.addToMessages("Similar Section $index: ${part.second}", "Embedding Model System")
+                }
+                Thread.sleep(300) // Add delay between messages
 
                 chatModel.updateSystemMessage("Relevant Document Info: $top2Text")
                 chatModel.updateMessage("${messageText.text}", "You")
@@ -278,8 +291,15 @@ private fun PdfStatusAndButton(
                 )
             }
 
+            Text(
+                text = "Add PDF",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .align(Alignment.CenterVertically),
+                color = MaterialTheme.colorScheme.onBackground
+            )
         }
-
     }
 }
 
@@ -321,6 +341,8 @@ private fun ChatInputRow(
         }
     }
 }
+
+
 @Composable
 fun MessageCard(message: Message) {
     val isUser = message.sender == "You"
